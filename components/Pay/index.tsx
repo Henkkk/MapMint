@@ -6,6 +6,7 @@ import {
   PayCommandInput,
 } from "@worldcoin/minikit-js";
 
+/* Commented out as requested
 const sendPayment = async () => {
   try {
     const res = await fetch(`/api/initiate-payment`, {
@@ -68,11 +69,18 @@ const handlePay = async () => {
     }
   }
 };
+*/
 
 export const PayBlock = () => {
   return (
-    <button className="bg-blue-500 p-4" onClick={handlePay}>
-      Pay
-    </button>
+    <div className="w-full max-w-md p-4 bg-white rounded-lg shadow">
+      <h2 className="text-xl font-bold mb-4">Payment</h2>
+      <p className="text-gray-500">Payment functionality is currently disabled.</p>
+      {/* 
+      <button className="bg-blue-500 p-4" onClick={handlePay}>
+        Pay
+      </button>
+      */}
+    </div>
   );
 };

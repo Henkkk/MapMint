@@ -6,7 +6,7 @@ import {
   MiniAppVerifyActionErrorPayload,
   IVerifyResponse,
 } from "@worldcoin/minikit-js";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 
 export type VerifyCommandInput = {
   action: string;
@@ -24,6 +24,18 @@ export const VerifyBlock = () => {
   const [handleVerifyResponse, setHandleVerifyResponse] = useState<
     MiniAppVerifyActionErrorPayload | IVerifyResponse | null
   >(null);
+  const [isVerified, setIsVerified] = useState(false);
+
+  // Check if already verified on load
+  useEffect(() => {
+    const checkCookie = () => {
+      const cookies = document.cookie.split(';');
+      const verifiedCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-verified='));
+      setIsVerified(verifiedCookie?.includes('true') || false);
+    };
+    
+    checkCookie();
+  }, []);
 
   const handleVerify = useCallback(async () => {
     if (!MiniKit.isInstalled()) {
@@ -55,12 +67,28 @@ export const VerifyBlock = () => {
       }),
     });
 
-    // TODO: Handle Success!
     const verifyResponseJson = await verifyResponse.json();
 
     if (verifyResponseJson.status === 200) {
       console.log("Verification success!");
       console.log(finalPayload);
+      
+      // Set verified status and store in cookie
+      setIsVerified(true);
+      
+      // Set a cookie to persist the verification
+      document.cookie = "world-id-verified=true; path=/; max-age=3600"; // Expires in 1 hour
+      
+      // Trigger a storage event to notify other components
+      localStorage.setItem('world-id-verified', 'true');
+      
+      // Clear response message on successful verification
+      setHandleVerifyResponse(null);
+      
+      // Dispatch a custom event that verification succeeded
+      window.dispatchEvent(new CustomEvent('world-id-verified', { detail: true }));
+      
+      return verifyResponseJson;
     }
 
     setHandleVerifyResponse(verifyResponseJson);
@@ -68,12 +96,24 @@ export const VerifyBlock = () => {
   }, []);
 
   return (
-    <div>
-      <h1>Verify Block</h1>
-      <button className="bg-green-500 p-4" onClick={handleVerify}>
-        Test Verify
+    <div className="w-full max-w-md p-4 bg-white rounded-lg shadow">
+      <h1 className="text-xl font-bold mb-4">World ID Verification</h1>
+      <button 
+        className={`px-4 py-2 rounded ${
+          isVerified 
+            ? "bg-green-500 text-white" 
+            : "bg-blue-500 text-white hover:bg-blue-600"
+        }`} 
+        onClick={handleVerify} 
+        disabled={isVerified}
+      >
+        {isVerified ? "Verified ✓" : "Verify with World ID"}
       </button>
-      <span>{JSON.stringify(handleVerifyResponse, null, 2)}</span>
+      {handleVerifyResponse && !isVerified && (
+        <div className="mt-4 p-2 bg-gray-100 rounded overflow-auto max-h-40 text-xs">
+          <pre>{JSON.stringify(handleVerifyResponse, null, 2)}</pre>
+        </div>
+      )}
     </div>
   );
 };
