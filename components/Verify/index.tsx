@@ -31,7 +31,13 @@ export const VerifyBlock = () => {
     const checkCookie = () => {
       const cookies = document.cookie.split(';');
       const verifiedCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-verified='));
-      setIsVerified(verifiedCookie?.includes('true') || false);
+      const verified = verifiedCookie?.includes('true') || false;
+      setIsVerified(verified);
+      
+      // If already verified, dispatch event for other components to know
+      if (verified) {
+        window.dispatchEvent(new CustomEvent('world-id-verified', { detail: true }));
+      }
     };
     
     checkCookie();
