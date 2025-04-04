@@ -641,12 +641,12 @@ Accuracy: ${measurement.location.accuracy.toFixed(1)} meters
                   </div>
                 </div>
                 
-                <div className="flex items-center justify-end gap-2">
+                <div className="flex flex-col gap-2">
                   {/* Add IPFS Save button */}
                   <button
                     onClick={() => saveToIPFS(index)}
                     disabled={savingMeasurementIndex === index || isSaving}
-                    className={`px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 transition flex items-center gap-1 ${
+                    className={`w-full px-3 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition flex items-center justify-center gap-1 ${
                       (savingMeasurementIndex === index || isSaving) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                   >
@@ -671,21 +671,21 @@ Accuracy: ${measurement.location.accuracy.toFixed(1)} meters
                   {/* Keep existing buttons */}
                   <button
                     onClick={() => downloadMeasurement(index)}
-                    className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition flex items-center gap-1"
+                    className="w-full px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition flex items-center justify-center gap-1"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
-                    Download
+                    <span>Download</span>
                   </button>
                   <button
                     onClick={() => deleteMeasurement(index)}
-                    className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 transition flex items-center gap-1"
+                    className="w-full px-3 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 transition flex items-center justify-center gap-1"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
-                    Delete
+                    <span>Delete</span>
                   </button>
                 </div>
               </li>
@@ -740,6 +740,30 @@ Accuracy: ${measurement.location.accuracy.toFixed(1)} meters
                     <div className="text-xs text-gray-500">Max</div>
                     <div className="font-medium">{savedMeasurement.data.max} dB</div>
                   </div>
+                </div>
+                
+                <div className="flex flex-col gap-2 mb-2">
+                  <button
+                    onClick={() => window.open(`https://ipfs.infura.io/ipfs/${savedMeasurement.cid}`, '_blank')}
+                    className="w-full px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition flex items-center justify-center gap-1"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    <span>View on IPFS</span>
+                  </button>
+                  
+                  {savedMeasurement.worldChainTxHash && (
+                    <button
+                      onClick={() => window.open(`https://explorer.worldcoin.org/tx/${savedMeasurement.worldChainTxHash}`, '_blank')}
+                      className="w-full px-3 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition flex items-center justify-center gap-1"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      <span>View on World Chain</span>
+                    </button>
+                  )}
                 </div>
                 
                 <div className="text-xs text-gray-500">
