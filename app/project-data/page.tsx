@@ -8,6 +8,7 @@ import { getProjectFromIPFS } from '../../lib/ipfs-service';
 interface Submission {
   projectCID: string;
   timestamp: string;
+  userAddress?: string;
   data: Array<{
     type: 'noise' | 'wifi' | 'light';
     timestamp: string;
@@ -26,6 +27,7 @@ export default function ProjectDataPage() {
   const [projectData, setProjectData] = useState<any>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [distributions, setDistributions] = useState<Array<{address: string, amount: number}>>([]);
   
   // Check if user is verified and project owner
   useEffect(() => {
@@ -83,6 +85,14 @@ export default function ProjectDataPage() {
         const projectSubmissions = allSubmissions.filter((s: Submission) => s.projectCID === projectCID);
         setSubmissions(projectSubmissions);
         
+        // Load distributions if project is completed
+        if (projectData.status === 'completed') {
+          const distributionsData = localStorage.getItem(`project-${projectCID}-distributions`);
+          if (distributionsData) {
+            setDistributions(JSON.parse(distributionsData));
+          }
+        }
+        
         setLoading(false);
       } catch (error) {
         console.error("Error checking project ownership:", error);
@@ -125,14 +135,74 @@ export default function ProjectDataPage() {
         if (projectData && projectCID) {
           projectData.status = 'completed';
           localStorage.setItem(`project-${projectCID}`, JSON.stringify(projectData));
+          
+          // Calculate and distribute rewards if there are submissions
+          if (submissions && submissions.length > 0) {
+            console.log("Found", submissions.length, "submissions for project");
+            // Calculate reward per user based on their contribution
+            const totalReward = projectData.rewards.worldcoin;
+            const contributionCounts: {[address: string]: number} = {};
+            const contributorAddresses: string[] = [];
+            
+            // Count contributions by each user
+            submissions.forEach((submission: Submission) => {
+              const userAddress = submission.userAddress || getCookieValue('world-id-address');
+              if (userAddress) {
+                if (!contributionCounts[userAddress]) {
+                  contributionCounts[userAddress] = 0;
+                  contributorAddresses.push(userAddress);
+                }
+                contributionCounts[userAddress] += submission.data.length; // Count each data item as a contribution
+              }
+            });
+            
+            // Calculate total contribution points
+            const totalContributions = Object.values(contributionCounts).reduce((sum, count) => sum + count, 0);
+            
+            if (totalContributions > 0 && contributorAddresses.length > 0) {
+              // Calculate and distribute rewards
+              const newDistributions: {address: string, amount: number}[] = [];
+              contributorAddresses.forEach(address => {
+                const userContributionRatio = contributionCounts[address] / totalContributions;
+                const rewardAmount = parseFloat((totalReward * userContributionRatio).toFixed(6));
+                newDistributions.push({
+                  address,
+                  amount: rewardAmount
+                });
+              });
+              
+              // Store distributions in localStorage
+              localStorage.setItem(`project-${projectCID}-distributions`, JSON.stringify(newDistributions));
+              setDistributions(newDistributions);
+              
+              // Show distribution details
+              const distributionMessage = 'Project completed! Rewards distributed:\n\n' + 
+                newDistributions.map(d => `${d.address.substring(0, 8)}...${d.address.substring(d.address.length - 6)}: ${d.amount} WLD`).join('\n');
+              
+              alert(distributionMessage);
+            } else {
+              console.log("No valid contributions found");
+              alert("Project successfully completed! No valid contributions to reward.");
+            }
+          } else {
+            console.log("No submissions found for project");
+            alert("Project successfully completed! No data submissions to reward.");
+          }
+          
           setProjectData({ ...projectData });
-          alert("Project successfully completed!");
         }
       }
     } catch (error) {
       console.error("Error ending project:", error);
       alert("An error occurred. Please try again.");
     }
+  };
+  
+  // Helper function to get cookie value
+  const getCookieValue = (name: string): string => {
+    const cookies = document.cookie.split(';');
+    const cookie = cookies.find(c => c.trim().startsWith(`${name}=`));
+    return cookie ? decodeURIComponent(cookie.split('=')[1]) : '';
   };
   
   const goBack = () => {
@@ -250,6 +320,43 @@ export default function ProjectDataPage() {
                 <span>End Project</span>
               </button>
             )}
+          </div>
+        )}
+        
+        {/* Display reward distributions for completed projects */}
+        {projectData && projectData.status === 'completed' && distributions.length > 0 && (
+          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 className="text-lg font-semibold mb-3">Reward Distributions</h2>
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full table-auto">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contributor</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount (WLD)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {distributions.map((dist, index) => (
+                    <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        {dist.address.substring(0, 6)}...{dist.address.substring(dist.address.length - 4)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                        {dist.amount}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50">
+                  <tr>
+                    <td className="px-4 py-2 text-sm font-medium">Total</td>
+                    <td className="px-4 py-2 text-sm font-medium text-right">
+                      {distributions.reduce((sum, d) => sum + d.amount, 0).toFixed(6)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
         )}
         

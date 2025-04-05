@@ -4,6 +4,10 @@
   "description": "Smart contracts for the MapMint platform",
   "main": "index.js",
   "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
     "compile": "hardhat compile",
     "test": "hardhat test",
     "node": "hardhat node",
@@ -38,6 +42,9 @@
     "typechain": "^8.3.0"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^5.0.0"
+    "@openzeppelin/contracts": "^5.0.0",
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   }
 }

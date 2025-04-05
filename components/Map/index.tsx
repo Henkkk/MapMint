@@ -17,10 +17,18 @@ export const MapView = () => {
   const [locationAddress, setLocationAddress] = useState<string>('');
   const [drawerTranslateY, setDrawerTranslateY] = useState(0);
   const [activeTab, setActiveTab] = useState('map');
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [mapRefreshKey, setMapRefreshKey] = useState(0);
+  const [showDistributionModal, setShowDistributionModal] = useState(false);
+  const [distributionData, setDistributionData] = useState<{address: string, amount: number}[]>([]);
+  const [distributionProject, setDistributionProject] = useState<string>('');
   const mapRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef(0);
   const router = useRouter();
+  const [projectImages, setProjectImages] = useState<Record<string, string>>({});
   
   // Load Google Maps API
   const { isLoaded } = useJsApiLoader({
@@ -47,6 +55,24 @@ export const MapView = () => {
   useEffect(() => {
     const loadProjects = async () => {
       await loadProjectPins();
+      
+      // After loading projects, check if any status has changed in localStorage
+      projectPins.forEach((pin, index) => {
+        try {
+          const projectData = localStorage.getItem(`project-${pin.cid}`);
+          if (projectData) {
+            const parsedData = JSON.parse(projectData);
+            if (parsedData.status !== pin.status) {
+              console.log(`Updating status for project ${pin.cid} from ${pin.status} to ${parsedData.status}`);
+              projectPins[index] = { ...pin, status: parsedData.status };
+              setMapRefreshKey(prev => prev + 1);
+            }
+          }
+        } catch (error) {
+          console.error(`Error checking status for project ${pin.cid}:`, error);
+        }
+      });
+      
       // Update nearby pins if user location is already set
       if (userLocation) {
         const nearby = getPinsByDistance(userLocation[0], userLocation[1], 5);
@@ -268,11 +294,18 @@ export const MapView = () => {
       const addressCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-address='));
       const userAddress = addressCookie ? decodeURIComponent(addressCookie.split('=')[1]) : '';
       
+      console.log("isProjectOwner - User address from cookie:", userAddress);
+      
       // Get project data from localStorage
       const projectData = localStorage.getItem(`project-${pin.cid}`);
-      if (!projectData) return false;
+      if (!projectData) {
+        console.log("isProjectOwner - No project data found for CID:", pin.cid);
+        return false;
+      }
       
       const parsedData = JSON.parse(projectData);
+      console.log("isProjectOwner - Project created by:", parsedData.createdBy);
+      console.log("isProjectOwner - Is owner?", parsedData.createdBy === userAddress);
       
       // Compare the createdBy field with the user's address
       return parsedData.createdBy === userAddress;
@@ -307,10 +340,14 @@ export const MapView = () => {
   // End the project
   const endProject = (pin: ProjectPin) => {
     try {
+      console.log("endProject function called for pin:", pin.cid);
+      
       // Check if user is verified with World ID
       const cookies = document.cookie.split(';');
       const verifiedCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-verified='));
       const isVerified = verifiedCookie?.includes('true') || false;
+      
+      console.log("User verified:", isVerified);
       
       if (!isVerified) {
         alert("You must verify with World ID first.");
@@ -318,33 +355,194 @@ export const MapView = () => {
         return;
       }
       
-      // Confirm user wants to end the project
-      if (confirm("Are you sure you want to end this project? This action cannot be undone.")) {
-        // Get project data from localStorage
-        const projectDataStr = localStorage.getItem(`project-${pin.cid}`);
-        if (projectDataStr) {
-          const projectData = JSON.parse(projectDataStr);
-          projectData.status = 'completed';
-          localStorage.setItem(`project-${pin.cid}`, JSON.stringify(projectData));
-          
-          // Update the pin in the current state
-          const updatedPin = { ...pin, status: 'completed' as 'completed' };
-          setSelectedPin(updatedPin);
-          
-          // Update the project pins
-          const index = projectPins.findIndex(p => p.cid === pin.cid);
-          if (index !== -1) {
-            projectPins[index] = updatedPin;
-          }
-          
-          alert("Project successfully completed!");
-        }
-      }
+      console.log("About to show confirmation dialog");
+      // Use custom confirmation dialog instead of native browser confirm
+      setConfirmMessage("Are you sure you want to end this project? This action cannot be undone.");
+      setConfirmAction(() => () => {
+        console.log("User confirmed end project via custom dialog");
+        // First, update the project status
+        completeProject(pin);
+      });
+      setShowConfirmDialog(true);
     } catch (error) {
       console.error("Error ending project:", error);
       alert("An error occurred. Please try again.");
     }
   };
+
+  // Function to complete the project and distribute rewards
+  const completeProject = (pin: ProjectPin) => {
+    try {
+      // Get project data from localStorage
+      const projectDataStr = localStorage.getItem(`project-${pin.cid}`);
+      if (!projectDataStr) {
+        console.error("Project data not found");
+        alert("Error: Project data not found");
+        return;
+      }
+      
+      const projectData = JSON.parse(projectDataStr);
+      projectData.status = 'completed';
+      localStorage.setItem(`project-${pin.cid}`, JSON.stringify(projectData));
+      
+      // Update the pin in the current state
+      const updatedPin = { ...pin, status: 'completed' as 'completed' };
+      setSelectedPin(updatedPin);
+      
+      // Update the project pins
+      const index = projectPins.findIndex(p => p.cid === pin.cid);
+      if (index !== -1) {
+        projectPins[index] = updatedPin;
+        setMapRefreshKey(prev => prev + 1);
+      }
+      
+      // Close the drawer first
+      closeDrawer();
+      
+      // Then distribute rewards in a separate function
+      setTimeout(() => {
+        distributeRewards(pin, projectData);
+      }, 300); // Small delay to ensure drawer is closed and state is updated
+    } catch (error) {
+      console.error("Error completing project:", error);
+      alert("Error: Could not complete the project. Please try again.");
+    }
+  };
+
+  // Function to handle reward distribution
+  const distributeRewards = (pin: ProjectPin, projectData: any) => {
+    try {
+      // Get project submissions from localStorage
+      const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]');
+      const projectSubmissions = allSubmissions.filter((s: any) => s.projectCID === pin.cid);
+      
+      console.log("Distributing rewards for project:", pin.cid);
+      console.log("Project submissions:", projectSubmissions);
+      
+      // Distribute rewards if there are submissions
+      if (projectSubmissions && projectSubmissions.length > 0) {
+        console.log("Found", projectSubmissions.length, "submissions for project");
+        // Calculate reward per user based on their contribution
+        const totalReward = projectData.rewards.worldcoin;
+        const contributionCounts: {[address: string]: number} = {};
+        const contributorAddresses: string[] = [];
+        
+        // Count contributions by each user
+        projectSubmissions.forEach((submission: any) => {
+          const userAddress = submission.userAddress || getCookieValue('world-id-address');
+          if (userAddress) {
+            if (!contributionCounts[userAddress]) {
+              contributionCounts[userAddress] = 0;
+              contributorAddresses.push(userAddress);
+            }
+            contributionCounts[userAddress] += submission.data.length; // Count each data item as a contribution
+          }
+        });
+        
+        // Calculate total contribution points
+        const totalContributions = Object.values(contributionCounts).reduce((sum, count) => sum + count, 0);
+        
+        if (totalContributions > 0 && contributorAddresses.length > 0) {
+          // Calculate and distribute rewards
+          const distributions: {address: string, amount: number}[] = [];
+          contributorAddresses.forEach(address => {
+            const userContributionRatio = contributionCounts[address] / totalContributions;
+            const rewardAmount = parseFloat((totalReward * userContributionRatio).toFixed(6));
+            distributions.push({
+              address,
+              amount: rewardAmount
+            });
+          });
+          
+          console.log("Calculated distributions:", distributions);
+          
+          // Store distributions in localStorage for demo purposes
+          localStorage.setItem(`project-${pin.cid}-distributions`, JSON.stringify(distributions));
+          
+          console.log("About to show distribution modal");
+          // Show distribution data in the modal
+          setDistributionData(distributions);
+          setDistributionProject(pin.title);
+          setShowDistributionModal(true);
+        } else {
+          console.log("No valid contributions found");
+          alert("Project successfully completed! No valid contributions to reward.");
+        }
+      } else {
+        console.log("No submissions found for project");
+        alert("Project successfully completed! No data submissions to reward.");
+      }
+    } catch (error) {
+      console.error("Error distributing rewards:", error);
+      alert("Error: Could not distribute rewards. Please try again.");
+    }
+  };
+
+  // Helper function to get cookie value
+  const getCookieValue = (name: string): string => {
+    const cookies = document.cookie.split(';');
+    const cookie = cookies.find(c => c.trim().startsWith(`${name}=`));
+    return cookie ? decodeURIComponent(cookie.split('=')[1]) : '';
+  };
+
+  // Add this useEffect to load project images when a pin is selected
+  useEffect(() => {
+    if (selectedPin && isProjectPin(selectedPin) && 
+        selectedPin.imageUrl === 'IMAGE_DATA_STORED_ELSEWHERE') {
+      // Try to get the actual image data from localStorage
+      try {
+        // Look for a separate image entry
+        const imageData = localStorage.getItem(`project-image-${selectedPin.cid}`);
+        if (imageData) {
+          setProjectImages(prev => ({
+            ...prev,
+            [selectedPin.cid]: imageData
+          }));
+        }
+      } catch (error) {
+        console.error("Error retrieving project image:", error);
+      }
+    }
+  }, [selectedPin]);
+
+  // Add this effect to log ownership status when selected pin changes
+  useEffect(() => {
+    if (selectedPin) {
+      if (isProjectPin(selectedPin)) {
+        const isOwner = isProjectOwner(selectedPin);
+        console.log("Selected project pin:", selectedPin.cid);
+        console.log("Is current user the owner?", isOwner);
+      } else {
+        console.log("Selected map pin:", selectedPin.id);
+      }
+    }
+  }, [selectedPin]);
+
+  // Add a function to view past distributions for a completed project
+  const viewDistributions = (pin: ProjectPin) => {
+    try {
+      // Get distributions from localStorage
+      const distributionsStr = localStorage.getItem(`project-${pin.cid}-distributions`);
+      if (!distributionsStr) {
+        alert("No distribution data found for this project.");
+        return;
+      }
+      
+      const distributions = JSON.parse(distributionsStr);
+      setDistributionData(distributions);
+      setDistributionProject(pin.title);
+      setShowDistributionModal(true);
+    } catch (error) {
+      console.error("Error loading distributions:", error);
+      alert("Error loading distribution data.");
+    }
+  };
+
+  useEffect(() => {
+    console.log("showDistributionModal changed to:", showDistributionModal);
+    console.log("distributionData:", distributionData);
+    console.log("distributionProject:", distributionProject);
+  }, [showDistributionModal, distributionData, distributionProject]);
 
   return (
     <div className="h-[calc(100vh-4rem)] w-full relative overflow-hidden">
@@ -357,11 +555,93 @@ export const MapView = () => {
         </div>
       )}
       
+      {/* Custom Confirmation Dialog */}
+      {showConfirmDialog && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowConfirmDialog(false)}></div>
+          <div className="bg-white rounded-lg p-6 max-w-sm mx-4 relative z-10">
+            <h3 className="text-lg font-medium mb-4">Confirm Action</h3>
+            <p className="mb-6">{confirmMessage}</p>
+            <div className="flex justify-end gap-3">
+              <button 
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+                onClick={() => setShowConfirmDialog(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                onClick={() => {
+                  if (confirmAction) {
+                    confirmAction();
+                    setShowConfirmDialog(false);
+                  }
+                }}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Distribution Modal */}
+      {showDistributionModal && (
+        <div className="fixed inset-0 flex items-center justify-center z-[1000]">
+          <div className="absolute inset-0 bg-black bg-opacity-70" onClick={() => setShowDistributionModal(false)}></div>
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 relative z-10 shadow-xl">
+            <h3 className="text-xl font-bold mb-2 text-blue-700">Reward Distribution Complete</h3>
+            <h4 className="text-lg font-medium mb-4 text-gray-800">Project: {distributionProject}</h4>
+            
+            <div className="mb-6 overflow-y-auto max-h-80">
+              <div className="bg-gray-100 p-3 rounded-lg mb-3">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium text-sm">Contributor</span>
+                  <span className="font-medium text-sm">Reward Amount</span>
+                </div>
+                
+                {distributionData.length === 0 ? (
+                  <p className="text-center py-4 text-gray-500">No distributions found</p>
+                ) : (
+                  distributionData.map((distribution, index) => (
+                    <div key={index} className="flex justify-between items-center py-2 border-t border-gray-200">
+                      <span className="text-gray-800">
+                        {distribution.address.substring(0, 6)}...{distribution.address.substring(distribution.address.length - 4)}
+                      </span>
+                      <span className="font-medium text-green-600">{distribution.amount} WLD</span>
+                    </div>
+                  ))
+                )}
+              </div>
+              
+              <div className="bg-blue-50 p-3 rounded-lg">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Total Distribution:</span>
+                  <span className="font-bold text-blue-600">
+                    {distributionData.reduce((sum, item) => sum + item.amount, 0).toFixed(6)} WLD
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end">
+              <button 
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                onClick={() => setShowDistributionModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Google Map */}
       <div className="w-full h-full relative" ref={mapRef}>
         {!isLoading && isLoaded ? (
           <>
             <GoogleMap
+              key={mapRefreshKey}
               mapContainerStyle={mapContainerStyle}
               center={userLocation ? { lat: userLocation[0], lng: userLocation[1] } : defaultCenter}
               zoom={13}
@@ -406,7 +686,9 @@ export const MapView = () => {
               })}
               
               {/* Project pins */}
-              {projectPins.map((pin) => (
+              {projectPins
+                .filter(pin => pin.status !== 'completed') // Only show active projects
+                .map((pin) => (
                 <Marker
                   key={pin.id}
                   position={{ lat: pin.position[0], lng: pin.position[1] }}
@@ -560,17 +842,28 @@ export const MapView = () => {
                   <h2 className="text-xl font-bold">{selectedPin.title}</h2>
                 </div>
                 
-                {isProjectPin(selectedPin) && selectedPin.imageUrl && 
-                  selectedPin.imageUrl !== 'IMAGE_DATA_STORED_ELSEWHERE' && (
-                  <div className="mb-4 rounded-lg overflow-hidden relative h-48 w-full">
-                    <Image
-                      src={selectedPin.imageUrl}
-                      alt={selectedPin.title}
-                      fill
-                      style={{objectFit: 'cover'}}
-                      sizes="(max-width: 768px) 100vw, 700px"
-                    />
-                  </div>
+                {isProjectPin(selectedPin) && (
+                  selectedPin.imageUrl && selectedPin.imageUrl !== 'IMAGE_DATA_STORED_ELSEWHERE' ? (
+                    <div className="mb-4 rounded-lg overflow-hidden relative h-48 w-full">
+                      <Image
+                        src={selectedPin.imageUrl}
+                        alt={selectedPin.title}
+                        fill
+                        style={{objectFit: 'cover'}}
+                        sizes="(max-width: 768px) 100vw, 700px"
+                      />
+                    </div>
+                  ) : projectImages[selectedPin.cid] ? (
+                    <div className="mb-4 rounded-lg overflow-hidden relative h-48 w-full">
+                      <Image
+                        src={projectImages[selectedPin.cid]}
+                        alt={selectedPin.title}
+                        fill
+                        style={{objectFit: 'cover'}}
+                        sizes="(max-width: 768px) 100vw, 700px"
+                      />
+                    </div>
+                  ) : null
                 )}
                 
                 <p className="text-gray-700 mb-4">{selectedPin.description}</p>
@@ -643,7 +936,7 @@ export const MapView = () => {
                     <h3 className="font-medium mb-2">Project Details</h3>
                     <div className="text-sm">
                       <div className="mb-1">End Date: {new Date(selectedPin.endDate).toLocaleDateString()}</div>
-                      <div>Status: <span className="font-medium">{selectedPin.status.charAt(0).toUpperCase() + selectedPin.status.slice(1)}</span></div>
+                      <div>Status: <span className="font-medium">{selectedPin.status?.charAt(0).toUpperCase() + selectedPin.status?.slice(1)}</span></div>
                       
                       {selectedPin.dataToCollect && (
                         <div className="mt-3">
@@ -678,7 +971,7 @@ export const MapView = () => {
                     <span>View Collected Data</span>
                   </button>
                   
-                  {selectedPin.status === 'active' && (
+                  {isProjectPin(selectedPin) && selectedPin.status === 'active' && (
                     <>
                       <button 
                         onClick={() => startMeasuring(selectedPin)}
@@ -691,7 +984,11 @@ export const MapView = () => {
                       </button>
                       
                       <button 
-                        onClick={() => endProject(selectedPin)}
+                        onClick={(e) => {
+                          console.log("End Project button clicked");
+                          e.preventDefault();
+                          endProject(selectedPin);
+                        }}
                         className="w-full px-4 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center justify-center gap-2"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -700,6 +997,18 @@ export const MapView = () => {
                         <span>End Project</span>
                       </button>
                     </>
+                  )}
+                  
+                  {isProjectPin(selectedPin) && selectedPin.status === 'completed' && (
+                    <button 
+                      onClick={() => viewDistributions(selectedPin)}
+                      className="w-full px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition flex items-center justify-center gap-2"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>View Distributions</span>
+                    </button>
                   )}
                 </div>
               ) : (

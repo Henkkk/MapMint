@@ -507,7 +507,7 @@ export default function CreateProjectPage() {
       const projectData: IPFSProjectData = {
         title: formData.address.split(',')[0] || 'New Project',
         description: formData.description,
-        imageUrl: imagePreview || undefined,
+        imageUrl: imagePreview ? 'IMAGE_DATA_STORED_ELSEWHERE' : undefined,
         location: formData.location,
         address: formData.address,
         range: formData.range,
@@ -532,25 +532,23 @@ export default function CreateProjectPage() {
       projectCIDs.push(cid);
       localStorage.setItem('projectCIDs', JSON.stringify(projectCIDs));
       
-      // Create a version of the project data safe for localStorage
-      // This avoids the "QuotaExceededError" by removing the potentially large image data
-      const localStorageProjectData = {
-        ...projectData,
-        imageUrl: imagePreview ? 'IMAGE_DATA_STORED_ELSEWHERE' : undefined
-      };
-      
-      // Store the trimmed version in localStorage
+      // Store the project data
       try {
-        localStorage.setItem(`project-${cid}`, JSON.stringify(localStorageProjectData));
+        localStorage.setItem(`project-${cid}`, JSON.stringify(projectData));
+        
+        // Store the image separately if it exists
+        if (imagePreview) {
+          localStorage.setItem(`project-image-${cid}`, imagePreview);
+        }
       } catch (storageError) {
         console.warn("Could not store full project in localStorage:", storageError);
         // Try with even less data if necessary
         try {
           const minimalProjectData = {
-            title: localStorageProjectData.title,
-            description: localStorageProjectData.description,
-            location: localStorageProjectData.location,
-            address: localStorageProjectData.address,
+            title: projectData.title,
+            description: projectData.description,
+            location: projectData.location,
+            address: projectData.address,
             cid: cid
           };
           localStorage.setItem(`project-${cid}`, JSON.stringify(minimalProjectData));

@@ -44,12 +44,18 @@ export default function DataSubmission({
       console.log("Submitting data to project:", projectCID);
       console.log("Data:", collectedData);
 
+      // Get the user's World ID verified address from cookie
+      const cookies = document.cookie.split(';');
+      const addressCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-address='));
+      const userAddress = addressCookie ? decodeURIComponent(addressCookie.split('=')[1]) : '';
+
       // Save submission record in localStorage for demo purposes
       const submissions = JSON.parse(localStorage.getItem('submissions') || '[]');
       submissions.push({
         projectCID,
         timestamp: new Date().toISOString(),
-        data: collectedData
+        data: collectedData,
+        userAddress
       });
       localStorage.setItem('submissions', JSON.stringify(submissions));
 

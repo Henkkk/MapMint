@@ -4,18 +4,153 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 
+// Define types for contribution and project data
+interface Submission {
+  projectCID: string;
+  timestamp: string;
+  data: any[];
+  userAddress?: string;
+}
+
+interface Distribution {
+  address: string;
+  amount: number;
+}
+
+interface ProjectData {
+  title: string;
+  createdBy?: string;
+  createdAt: string;
+  rewards: {
+    worldcoin: number;
+  };
+  status: 'active' | 'completed' | 'expired';
+}
+
+interface ContributionItem {
+  id: string;
+  name: string;
+  date: string;
+  amount: string;
+  status: string;
+}
+
 export const ProfileView = () => {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const [activeTab, setActiveTab] = useState('profile');
-  const [totalPoints, setTotalPoints] = useState(0);
-  const [measurements, setMeasurements] = useState(0);
+  const [activeTab, setActiveTab] = useState('history');
+  const [totalEarned, setTotalEarned] = useState(0);
+  const [balance, setBalance] = useState(0);
+  const [contributionHistory, setContributionHistory] = useState<ContributionItem[]>([]);
+  const [createdTasks, setCreatedTasks] = useState<ContributionItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Simulate fetching profile data
+  // Fetch user data
   useEffect(() => {
-    // In a real app, you would fetch this data from your API
-    setTotalPoints(235);
-    setMeasurements(12);
+    const fetchUserData = async () => {
+      try {
+        setLoading(true);
+        // Get user's World ID address from cookie
+        const cookies = document.cookie.split(';');
+        const addressCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-address='));
+        const userAddress = addressCookie ? decodeURIComponent(addressCookie.split('=')[1]) : '';
+        
+        if (!userAddress) {
+          setLoading(false);
+          return;
+        }
+        
+        // Fetch contribution history
+        const submissions = JSON.parse(localStorage.getItem('submissions') || '[]') as Submission[];
+        const userSubmissions = submissions.filter(s => s.userAddress === userAddress);
+        
+        // Get project details for each submission
+        const contributionProjects: ContributionItem[] = [];
+        let totalEarned = 0;
+        let currentBalance = 0;
+        
+        for (const submission of userSubmissions) {
+          try {
+            // Get project data
+            const projectDataStr = localStorage.getItem(`project-${submission.projectCID}`);
+            if (projectDataStr) {
+              const projectData = JSON.parse(projectDataStr) as ProjectData;
+              
+              // Check if there are distributions for this project
+              const distributionsStr = localStorage.getItem(`project-${submission.projectCID}-distributions`);
+              let status = 'Pending';
+              let amount = '0 $WORLD';
+              
+              if (distributionsStr) {
+                const distributions = JSON.parse(distributionsStr) as Distribution[];
+                const userDistribution = distributions.find(d => d.address === userAddress);
+                
+                if (userDistribution) {
+                  status = 'Paid';
+                  amount = `${userDistribution.amount} $WORLD`;
+                  totalEarned += userDistribution.amount;
+                  currentBalance += userDistribution.amount;
+                }
+              } else if (projectData.status === 'active') {
+                status = 'Pending';
+                // Estimate amount based on project rewards and contribution count
+                const estimatedAmount = Math.floor(projectData.rewards.worldcoin / 5); // Simple estimate
+                amount = `~${estimatedAmount} $WORLD`;
+              }
+              
+              contributionProjects.push({
+                id: submission.projectCID,
+                name: projectData.title,
+                date: new Date(submission.timestamp).toLocaleDateString(),
+                amount: amount,
+                status: status
+              });
+            }
+          } catch (error) {
+            console.error("Error loading project data for submission:", error);
+          }
+        }
+        
+        setContributionHistory(contributionProjects);
+        setTotalEarned(totalEarned);
+        setBalance(currentBalance);
+        
+        // Fetch created projects
+        const allProjectCIDs = JSON.parse(localStorage.getItem('projectCIDs') || '[]') as string[];
+        const userProjects: ContributionItem[] = [];
+        
+        for (const cid of allProjectCIDs) {
+          try {
+            const projectDataStr = localStorage.getItem(`project-${cid}`);
+            if (projectDataStr) {
+              const projectData = JSON.parse(projectDataStr) as ProjectData;
+              
+              // Check if the user is the creator
+              if (projectData.createdBy === userAddress) {
+                userProjects.push({
+                  id: cid,
+                  name: projectData.title,
+                  date: new Date(projectData.createdAt).toLocaleDateString(),
+                  amount: `${projectData.rewards.worldcoin} $WORLD`,
+                  status: projectData.status === 'active' ? 'Active' : 
+                          projectData.status === 'completed' ? 'Completed' : 'Expired'
+                });
+              }
+            }
+          } catch (error) {
+            console.error("Error loading project data:", error);
+          }
+        }
+        
+        setCreatedTasks(userProjects);
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        setLoading(false);
+      }
+    };
+    
+    fetchUserData();
   }, []);
 
   // Handle navigation back to map
@@ -23,70 +158,128 @@ export const ProfileView = () => {
     router.push('/');
   };
 
-  return (
-    <div className="h-[calc(100vh-4rem)] w-full relative overflow-auto bg-gray-50">
-      {/* Profile header */}
-      <div className="bg-white px-4 py-6 shadow">
-        <div className="flex items-center">
-          <div className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center text-white text-2xl font-bold">
-            {session?.user?.name ? session.user.name.substring(0, 1).toUpperCase() : 'U'}
-          </div>
-          <div className="ml-4">
-            <h2 className="text-xl font-bold">
-              {session?.user?.name || 'Anonymous User'}
-            </h2>
-            <p className="text-gray-600">Data Collector</p>
-          </div>
+  // Determine which content to show based on active tab
+  const renderTabContent = () => {
+    if (loading) {
+      return (
+        <div className="flex justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
         </div>
+      );
+    }
+    
+    if (activeTab === 'history') {
+      return (
+        <div className="space-y-4">
+          {contributionHistory.length > 0 ? (
+            contributionHistory.map((project) => (
+              <div key={project.id} className="bg-white rounded-lg shadow p-4 border">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-lg">{project.name}</h4>
+                    <p className="text-sm text-gray-600">{project.date}</p>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <div className="text-green-500 font-medium">{project.amount}</div>
+                    <div className={`text-sm ${project.status === 'Pending' ? 'text-yellow-500' : 'text-gray-500'}`}>
+                      {project.status}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-6 text-gray-500">
+              No contribution history found. Start contributing to earn rewards!
+            </div>
+          )}
+        </div>
+      );
+    } else {
+      return (
+        <div className="space-y-4">
+          {createdTasks.length > 0 ? (
+            createdTasks.map((task) => (
+              <div key={task.id} className="bg-white rounded-lg shadow p-4 border">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-lg">{task.name}</h4>
+                    <p className="text-sm text-gray-600">{task.date}</p>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <div className="text-green-500 font-medium">{task.amount}</div>
+                    <div className={`text-sm ${
+                      task.status === 'Active' ? 'text-blue-500' : 
+                      task.status === 'Completed' ? 'text-green-500' : 'text-gray-500'
+                    }`}>
+                      {task.status}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-6 text-gray-500">
+              No projects created yet. Create your first data collection project!
+            </div>
+          )}
+        </div>
+      );
+    }
+  };
+
+  return (
+    <div className="h-full w-full relative overflow-auto bg-white">
+      {/* Profile header */}
+      <div className="p-6 pb-2">
+        <h1 className="text-3xl font-bold">Profile</h1>
       </div>
 
       {/* Stats section */}
-      <div className="px-4 py-6">
-        <h3 className="text-lg font-semibold mb-4">Your Stats</h3>
+      <div className="px-4 py-2">
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-white rounded-lg shadow p-4">
-            <div className="text-3xl font-bold text-blue-500">{totalPoints}</div>
-            <div className="text-gray-600 text-sm">Total Points</div>
+          <div className="bg-white rounded-lg shadow p-4 border">
+            <div className="text-5xl font-bold text-green-500">{totalEarned}</div>
+            <div className="text-gray-500 text-sm">$WORLD</div>
+            <div className="text-gray-600">Total Earned</div>
           </div>
-          <div className="bg-white rounded-lg shadow p-4">
-            <div className="text-3xl font-bold text-green-500">{measurements}</div>
-            <div className="text-gray-600 text-sm">Measurements</div>
+          <div className="bg-white rounded-lg shadow p-4 border">
+            <div className="text-5xl font-bold text-green-500">{balance}</div>
+            <div className="text-gray-500 text-sm">$WORLD</div>
+            <div className="text-gray-600">Balance</div>
           </div>
         </div>
       </div>
 
-      {/* Recent Activity */}
+      {/* Tabs */}
       <div className="px-4 py-4">
-        <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
-        <div className="bg-white rounded-lg shadow divide-y">
-          <div className="p-4">
-            <div className="flex justify-between">
-              <div>
-                <h4 className="font-medium">Taipei Main Station</h4>
-                <p className="text-sm text-gray-600">Noise measurement</p>
-              </div>
-              <div className="text-green-500 font-medium">+25 pts</div>
-            </div>
-          </div>
-          <div className="p-4">
-            <div className="flex justify-between">
-              <div>
-                <h4 className="font-medium">Da'an Forest Park</h4>
-                <p className="text-sm text-gray-600">Noise measurement</p>
-              </div>
-              <div className="text-green-500 font-medium">+15 pts</div>
-            </div>
-          </div>
-          <div className="p-4">
-            <div className="flex justify-between">
-              <div>
-                <h4 className="font-medium">Shilin Night Market</h4>
-                <p className="text-sm text-gray-600">Noise measurement</p>
-              </div>
-              <div className="text-green-500 font-medium">+30 pts</div>
-            </div>
-          </div>
+        <div className="flex space-x-2">
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`py-3 px-6 rounded-full ${
+              activeTab === 'history'
+                ? 'bg-green-500 text-white'
+                : 'bg-gray-100 text-black'
+            }`}
+          >
+            Contribute History
+          </button>
+          <button
+            onClick={() => setActiveTab('created')}
+            className={`py-3 px-6 rounded-full ${
+              activeTab === 'created'
+                ? 'bg-green-500 text-white'
+                : 'bg-gray-100 text-black'
+            }`}
+          >
+            Projects Created
+          </button>
         </div>
+      </div>
+
+      {/* Projects/Tasks List */}
+      <div className="px-4 py-2 pb-32">
+        {renderTabContent()}
       </div>
 
       {/* Bottom Navigation Bar */}
