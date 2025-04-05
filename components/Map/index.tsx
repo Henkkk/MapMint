@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { MapPin, mapPins, getPinsByDistance, loadProjectPins, projectPins, ProjectPin } from '../../lib/map-pins';
 import { useRouter } from 'next/navigation';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import Image from 'next/image';
 
 // Map Component using Google Maps
 export const MapView = () => {
@@ -114,8 +115,14 @@ export const MapView = () => {
         return;
       }
       
-      // If verified, proceed to noise measurement
-      router.push('/noise-measurement');
+      // If verified, redirect based on pin type
+      if (isProjectPin(pin)) {
+        // For project pins, go to contribute page with project CID
+        router.push(`/contribute?project=${pin.cid}`);
+      } else {
+        // For regular map pins, go directly to noise measurement
+        router.push('/noise-measurement');
+      }
     } catch (error) {
       console.error("Error in startMeasuring:", error);
       alert("An error occurred. Please try again.");
@@ -459,6 +466,18 @@ export const MapView = () => {
                   <h2 className="text-xl font-bold">{selectedPin.title}</h2>
                 </div>
                 
+                {isProjectPin(selectedPin) && selectedPin.imageUrl && (
+                  <div className="mb-4 rounded-lg overflow-hidden relative h-48 w-full">
+                    <Image
+                      src={selectedPin.imageUrl}
+                      alt={selectedPin.title}
+                      fill
+                      style={{objectFit: 'cover'}}
+                      sizes="(max-width: 768px) 100vw, 700px"
+                    />
+                  </div>
+                )}
+                
                 <p className="text-gray-700 mb-4">{selectedPin.description}</p>
                 
                 <div className="flex justify-between items-center mb-3">
@@ -530,6 +549,23 @@ export const MapView = () => {
                     <div className="text-sm">
                       <div className="mb-1">End Date: {new Date(selectedPin.endDate).toLocaleDateString()}</div>
                       <div>Status: <span className="font-medium">{selectedPin.status.charAt(0).toUpperCase() + selectedPin.status.slice(1)}</span></div>
+                      
+                      {selectedPin.dataToCollect && (
+                        <div className="mt-3">
+                          <div className="font-medium mb-1">Data to Collect:</div>
+                          <ul className="list-disc list-inside pl-1">
+                            {selectedPin.dataToCollect.backgroundNoise && (
+                              <li>Background Noise</li>
+                            )}
+                            {selectedPin.dataToCollect.wifiSpeed && (
+                              <li>WiFi Speed</li>
+                            )}
+                            {selectedPin.dataToCollect.lightIntensity && (
+                              <li>Light Intensity</li>
+                            )}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

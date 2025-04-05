@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import Image from 'next/image';
-import Script from 'next/script';
+import { useJsApiLoader } from '@react-google-maps/api';
 import { IPFSProjectData, uploadProjectToIPFS } from '../../lib/ipfs-service';
 
 // Add custom CSS to ensure the Places Autocomplete dropdown is visible
@@ -50,6 +50,11 @@ type FormData = {
   endDate: string;
   rewards: {
     worldcoin: number;
+  };
+  dataToCollect: {
+    backgroundNoise: boolean;
+    wifiSpeed: boolean;
+    lightIntensity: boolean;
   };
 };
 
@@ -101,7 +106,6 @@ export default function CreateProjectPage() {
   const placesService = useRef<any>(null);
   const autocompleteSvc = useRef<any>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
-  const [apiLoaded, setApiLoaded] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [addressFocused, setAddressFocused] = useState(false);
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
@@ -116,33 +120,25 @@ export default function CreateProjectPage() {
     endDate: '',
     rewards: {
       worldcoin: 0.1
+    },
+    dataToCollect: {
+      backgroundNoise: true,
+      wifiSpeed: true,
+      lightIntensity: true
     }
   });
   const [submitting, setSubmitting] = useState(false);
   
-  // Add an effect to check if Google Maps is fully loaded
-  useEffect(() => {
-    if (apiLoaded && typeof window !== 'undefined' && (!window.google || !window.google.maps)) {
-      // If apiLoaded is true but window.google.maps is not available,
-      // we need to poll until it's available
-      console.log("Waiting for Google Maps to be fully initialized...");
-      
-      const checkGoogleMaps = () => {
-        if (window.google && window.google.maps) {
-          console.log("Google Maps successfully initialized");
-        } else {
-          console.log("Google Maps not yet initialized, retrying...");
-          setTimeout(checkGoogleMaps, 300);
-        }
-      };
-      
-      checkGoogleMaps();
-    }
-  }, [apiLoaded]);
+  // Load Google Maps API
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyBXF5UM_K6GNpagXSZFjJopMVJnPOJIYkI',
+    libraries: ['places'],
+  });
   
   // Initialize Google Maps services after the script is loaded
   useEffect(() => {
-    if (!apiLoaded) return;
+    if (!isLoaded) return;
     
     // Safety check to ensure the Google Maps API is fully loaded
     if (typeof window === 'undefined' || !window.google || !window.google.maps) {
@@ -173,11 +169,11 @@ export default function CreateProjectPage() {
     } catch (error) {
       console.error("Error initializing Google services:", error);
     }
-  }, [apiLoaded]);
+  }, [isLoaded]);
   
   // Setup autocomplete when input is available and API is loaded
   useEffect(() => {
-    if (!apiLoaded) return;
+    if (!isLoaded) return;
     
     // Ensure all required objects are available
     if (
@@ -265,7 +261,7 @@ export default function CreateProjectPage() {
         }
       }
     };
-  }, [apiLoaded]);
+  }, [isLoaded]);
   
   // Check if user is verified on load
   useEffect(() => {
@@ -338,6 +334,14 @@ export default function CreateProjectPage() {
           location: {
             ...prev.location,
             [child]: parseFloat(value)
+          }
+        }));
+      } else if (parent === 'dataToCollect') {
+        setFormData(prev => ({
+          ...prev,
+          dataToCollect: {
+            ...prev.dataToCollect,
+            [child]: (e.target as HTMLInputElement).checked
           }
         }));
       }
@@ -420,6 +424,7 @@ export default function CreateProjectPage() {
         rewards: {
           worldcoin: formData.rewards.worldcoin
         },
+        dataToCollect: formData.dataToCollect,
         createdBy: userAddress,
         createdAt: new Date().toISOString(),
         status: 'active'
@@ -485,19 +490,6 @@ export default function CreateProjectPage() {
     <div className="min-h-screen p-4">
       {/* Add the style tag for Places Autocomplete styles */}
       <style dangerouslySetInnerHTML={{ __html: placesAutocompleteStyles }} />
-      
-      {/* Load Google Maps API for geocoding and places */}
-      <Script
-        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBXF5UM_K6GNpagXSZFjJopMVJnPOJIYkI&libraries=places"
-        strategy="lazyOnload"
-        onReady={() => {
-          console.log("Google Maps API loaded and ready");
-          setApiLoaded(true);
-        }}
-        onError={(e) => {
-          console.error("Google Maps API failed to load", e);
-        }}
-      />
       
       <div className="max-w-md mx-auto">
         <div className="flex items-center mb-6">
@@ -710,6 +702,55 @@ export default function CreateProjectPage() {
                 max="1000000000"
                 required
               />
+            </div>
+            
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Data to Collect
+              </label>
+              <div className="space-y-2">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="collect-noise"
+                    name="dataToCollect.backgroundNoise"
+                    checked={formData.dataToCollect.backgroundNoise}
+                    onChange={handleInputChange}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="collect-noise" className="ml-2 block text-sm text-gray-700">
+                    Background Noise
+                  </label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="collect-wifi"
+                    name="dataToCollect.wifiSpeed"
+                    checked={formData.dataToCollect.wifiSpeed}
+                    onChange={handleInputChange}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="collect-wifi" className="ml-2 block text-sm text-gray-700">
+                    WiFi Speed
+                  </label>
+                </div>
+                
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="collect-light"
+                    name="dataToCollect.lightIntensity"
+                    checked={formData.dataToCollect.lightIntensity}
+                    onChange={handleInputChange}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="collect-light" className="ml-2 block text-sm text-gray-700">
+                    Light Intensity
+                  </label>
+                </div>
+              </div>
             </div>
             
             <button

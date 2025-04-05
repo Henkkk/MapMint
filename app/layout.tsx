@@ -5,6 +5,7 @@ import MiniKitProvider from "@/components/minikit-provider";
 import dynamic from "next/dynamic";
 import NextAuthProvider from "@/components/next-auth-provider";
 import { MeasurementStorageProvider } from '../contexts/MeasurementStorageContext';
+import { CollectedDataProvider } from '../contexts/CollectedDataContext';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -31,7 +32,9 @@ export default function RootLayout({
           <ErudaProvider>
             <MiniKitProvider>
               <MeasurementStorageProvider>
-                {children}
+                <CollectedDataProvider>
+                  {children}
+                </CollectedDataProvider>
               </MeasurementStorageProvider>
             </MiniKitProvider>
           </ErudaProvider>

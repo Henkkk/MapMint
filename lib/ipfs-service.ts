@@ -47,6 +47,11 @@ export interface IPFSProjectData {
   rewards: {
     worldcoin: number;
   };
+  dataToCollect?: {
+    backgroundNoise: boolean;
+    wifiSpeed: boolean;
+    lightIntensity: boolean;
+  };
   createdBy?: string; // World ID verified address
   createdAt: string;
   status: 'active' | 'completed' | 'expired';

@@ -23,9 +23,15 @@ export interface ProjectPin {
   title: string;
   description: string;
   cid: string; // IPFS content ID
+  imageUrl?: string; // Project image URL
   range: number; // collection range in km
   rewards?: {
     worldcoin: number;
+  };
+  dataToCollect?: {
+    backgroundNoise: boolean;
+    wifiSpeed: boolean;
+    lightIntensity: boolean;
   };
   endDate: string;
   status: 'active' | 'completed' | 'expired';
@@ -62,8 +68,14 @@ export const loadProjectPins = async () => {
             title: cachedData.title || 'Project',
             description: cachedData.description || 'User created project',
             cid,
+            imageUrl: cachedData.imageUrl,
             range: cachedData.range || 1,
             rewards: cachedData.rewards,
+            dataToCollect: cachedData.dataToCollect || {
+              backgroundNoise: true,
+              wifiSpeed: false,
+              lightIntensity: false
+            },
             endDate: cachedData.endDate,
             status: cachedData.status || 'active'
           };
@@ -83,9 +95,15 @@ export const loadProjectPins = async () => {
         title: `User Project ${index + 1}`,
         description: 'A user created noise collection project',
         cid,
+        imageUrl: `https://source.unsplash.com/random/300x200?city,${index}`, // Mock image
         range: 1 + Math.random() * 4,
         rewards: {
           worldcoin: Math.floor(Math.random() * 100) / 100
+        },
+        dataToCollect: {
+          backgroundNoise: true,
+          wifiSpeed: Math.random() > 0.5,
+          lightIntensity: Math.random() > 0.5
         },
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         status: 'active'

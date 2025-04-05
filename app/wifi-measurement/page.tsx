@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useCollectedData } from '../../contexts/CollectedDataContext';
 
-export default function NoiseMeasurementPage() {
+export default function WiFiMeasurementPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectCID = searchParams.get('project');
@@ -13,15 +13,14 @@ export default function NoiseMeasurementPage() {
   const [isVerified, setIsVerified] = useState(false);
   const [loading, setLoading] = useState(true);
   const [projectData, setProjectData] = useState<any>(null);
-  const [measuring, setMeasuring] = useState(false);
-  const [measurementResult, setMeasurementResult] = useState<{
-    min: number;
-    max: number;
-    average: number;
-    level: string;
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    download: number;
+    upload: number;
+    ping: number;
   } | null>(null);
-  const [measurementCompleted, setMeasurementCompleted] = useState(false);
-  const [measurementSaved, setMeasurementSaved] = useState(false);
+  const [testCompleted, setTestCompleted] = useState(false);
+  const [testSaved, setTestSaved] = useState(false);
   
   // Check if user is verified on load
   useEffect(() => {
@@ -59,9 +58,9 @@ export default function NoiseMeasurementPage() {
           const parsedData = JSON.parse(localData);
           setProjectData(parsedData);
           
-          // Redirect if noise measurement is not enabled for this project
-          if (!parsedData.dataToCollect?.backgroundNoise) {
-            alert("Noise measurement is not enabled for this project.");
+          // Redirect if WiFi measurement is not enabled for this project
+          if (!parsedData.dataToCollect?.wifiSpeed) {
+            alert("WiFi speed measurement is not enabled for this project.");
             router.back();
           }
         } else {
@@ -77,58 +76,49 @@ export default function NoiseMeasurementPage() {
 
     fetchProjectData();
     
-    // Check if we already have noise data
-    if (hasDataOfType('noise')) {
-      setMeasurementSaved(true);
+    // Check if we already have WiFi data
+    if (hasDataOfType('wifi')) {
+      setTestSaved(true);
     }
   }, [projectCID, router, hasDataOfType]);
   
   const goBack = () => {
-    if (projectCID) {
-      router.push(`/contribute?project=${projectCID}`);
-    } else {
-      router.back();
-    }
+    router.push(`/contribute?project=${projectCID}`);
   };
   
-  const startMeasuring = () => {
-    setMeasuring(true);
+  const startTest = () => {
+    setTesting(true);
     
-    // Simulate noise measurement for demo
+    // Simulate WiFi speed test for demo purposes
     setTimeout(() => {
-      const min = Math.floor(Math.random() * 30) + 20; // 20-50 dB
-      const max = min + Math.floor(Math.random() * 40) + 10; // min + 10-50 dB
-      const average = Math.floor((min + max) / 2);
+      // Generate random values for demo
+      const download = Math.floor(Math.random() * 80) + 20; // 20-100 Mbps
+      const upload = Math.floor(Math.random() * 50) + 10; // 10-60 Mbps
+      const ping = Math.floor(Math.random() * 50) + 10; // 10-60 ms
       
-      let level = 'quiet';
-      if (average > 70) level = 'loud';
-      else if (average > 50) level = 'noisy';
-      else if (average > 30) level = 'moderate';
-      
-      setMeasurementResult({
-        min,
-        max,
-        average,
-        level
+      setTestResult({
+        download,
+        upload,
+        ping
       });
       
-      setMeasuring(false);
-      setMeasurementCompleted(true);
+      setTesting(false);
+      setTestCompleted(true);
     }, 3000);
   };
   
-  const saveNoiseData = () => {
-    if (!measurementResult) return;
+  const saveWifiData = () => {
+    if (!testResult) return;
     
     // Add to collected data context
     addData({
-      type: 'noise',
+      type: 'wifi',
       timestamp: new Date().toISOString(),
       data: {
-        min: measurementResult.min,
-        max: measurementResult.max,
-        average: measurementResult.average,
-        level: measurementResult.level,
+        download: testResult.download,
+        upload: testResult.upload,
+        ping: testResult.ping,
+        isp: 'Demo ISP',
         location: {
           latitude: 25.033,
           longitude: 121.565,
@@ -137,10 +127,10 @@ export default function NoiseMeasurementPage() {
       }
     });
     
-    setMeasurementSaved(true);
+    setTestSaved(true);
     
     // Notify user
-    alert("Noise measurement data saved! You can now submit all collected data from the contribute page.");
+    alert("WiFi speed data saved! You can now submit all collected data from the contribute page.");
   };
 
   if (loading) {
@@ -154,39 +144,39 @@ export default function NoiseMeasurementPage() {
   return (
     <div className="min-h-screen p-4">
       <div className="max-w-md mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Noise Measurement</h1>
+        <h1 className="text-2xl font-bold mb-6">WiFi Speed Measurement</h1>
         
         {isVerified ? (
           <div className="bg-white p-6 rounded-lg shadow-md">
-            {!measurementCompleted ? (
+            {!testCompleted ? (
               <>
                 <p className="mb-4">
-                  Welcome to the noise measurement page. This feature allows you to contribute
-                  noise level data from your current location.
+                  Welcome to the WiFi speed measurement page. This feature allows you to contribute
+                  WiFi speed data from your current location.
                 </p>
                 
                 <div className="bg-blue-50 p-4 rounded-lg mb-6">
                   <h2 className="font-bold text-lg mb-2">How it works:</h2>
                   <ol className="list-decimal pl-5 space-y-2">
-                    <li>Grant microphone permissions when prompted</li>
-                    <li>Hold your device naturally for 30 seconds</li>
-                    <li>The app will measure ambient noise levels</li>
+                    <li>Press "Start Test" to begin WiFi speed measurement</li>
+                    <li>The test will check your download and upload speeds</li>
+                    <li>Results will be displayed once the test completes</li>
                     <li>Review and submit your data to earn rewards</li>
                   </ol>
                 </div>
                 
                 <button 
                   className="w-full bg-blue-500 text-white py-3 rounded-lg font-medium hover:bg-blue-600 transition flex items-center justify-center"
-                  onClick={startMeasuring}
-                  disabled={measuring}
+                  onClick={startTest}
+                  disabled={testing}
                 >
-                  {measuring ? (
+                  {testing ? (
                     <>
                       <div className="animate-spin h-5 w-5 mr-2 border-t-2 border-l-2 border-white rounded-full"></div>
-                      Measuring...
+                      Testing Speed...
                     </>
                   ) : (
-                    "Start Measuring"
+                    "Start Test"
                   )}
                 </button>
               </>
@@ -198,54 +188,48 @@ export default function NoiseMeasurementPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
-                  <h2 className="text-lg font-bold mt-4 mb-1">Measurement Complete</h2>
-                  <p className="text-gray-500">Your noise level has been measured successfully.</p>
+                  <h2 className="text-lg font-bold mt-4 mb-1">Test Complete</h2>
+                  <p className="text-gray-500">Your WiFi speed has been tested successfully.</p>
                 </div>
                 
                 <div className="bg-gray-50 p-4 rounded-lg mb-6">
                   <h3 className="font-medium mb-3">Results:</h3>
                   <div className="grid grid-cols-3 gap-3">
                     <div className="bg-white p-3 rounded shadow text-center">
-                      <div className="text-xs text-gray-500 mb-1">MIN</div>
-                      <div className="text-xl font-bold">{measurementResult?.min} dB</div>
+                      <div className="text-xs text-gray-500 mb-1">DOWNLOAD</div>
+                      <div className="text-xl font-bold">{testResult?.download} Mbps</div>
                     </div>
                     <div className="bg-white p-3 rounded shadow text-center">
-                      <div className="text-xs text-gray-500 mb-1">AVG</div>
-                      <div className="text-xl font-bold">{measurementResult?.average} dB</div>
+                      <div className="text-xs text-gray-500 mb-1">UPLOAD</div>
+                      <div className="text-xl font-bold">{testResult?.upload} Mbps</div>
                     </div>
                     <div className="bg-white p-3 rounded shadow text-center">
-                      <div className="text-xs text-gray-500 mb-1">MAX</div>
-                      <div className="text-xl font-bold">{measurementResult?.max} dB</div>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-4 text-center">
-                    <div className="inline-block px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
-                      Category: {measurementResult?.level ? measurementResult.level.charAt(0).toUpperCase() + measurementResult.level.slice(1) : 'Unknown'}
+                      <div className="text-xs text-gray-500 mb-1">PING</div>
+                      <div className="text-xl font-bold">{testResult?.ping} ms</div>
                     </div>
                   </div>
                 </div>
                 
-                {!measurementSaved ? (
+                {!testSaved ? (
                   <button
-                    onClick={saveNoiseData}
+                    onClick={saveWifiData}
                     className="w-full bg-green-500 text-white py-3 rounded-lg font-medium hover:bg-green-600 transition"
                   >
-                    Save Measurement
+                    Save Test Results
                   </button>
                 ) : (
                   <div className="bg-green-50 p-4 rounded-lg text-center">
-                    <p className="text-green-700 mb-2">Measurement saved successfully!</p>
+                    <p className="text-green-700 mb-2">Test results saved successfully!</p>
                     <p className="text-sm text-green-600">You can now return to the contribute page to submit all collected data.</p>
                   </div>
                 )}
                 
-                {!measurementSaved && (
+                {!testSaved && (
                   <button
-                    onClick={startMeasuring}
+                    onClick={startTest}
                     className="w-full mt-4 px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition"
                   >
-                    Measure Again
+                    Test Again
                   </button>
                 )}
               </div>
