@@ -120,7 +120,7 @@ export const getPinsByDistance = (lat: number, lng: number, maxDistanceKm: numbe
 };
 
 // Calculate distance between two coordinates in kilometers using the Haversine formula
-function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+export function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371; // Radius of the earth in km
   const dLat = deg2rad(lat2 - lat1);
   const dLon = deg2rad(lon2 - lon1);

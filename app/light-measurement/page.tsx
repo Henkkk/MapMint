@@ -2,15 +2,28 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useCollectedData } from '../../contexts/CollectedDataContext';
+import { getDistanceFromLatLonInKm } from '../../lib/map-pins';
 
 export default function LightMeasurementPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectCID = searchParams.get('project');
+  const { addData, hasDataOfType } = useCollectedData();
   
   const [isVerified, setIsVerified] = useState(false);
   const [loading, setLoading] = useState(true);
   const [projectData, setProjectData] = useState<any>(null);
+  const [measuring, setMeasuring] = useState(false);
+  const [measurementResult, setMeasurementResult] = useState<{
+    level: number;
+    description: string;
+  } | null>(null);
+  const [measurementCompleted, setMeasurementCompleted] = useState(false);
+  const [measurementSaved, setMeasurementSaved] = useState(false);
+  const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
+  const [isInRange, setIsInRange] = useState<boolean>(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   
   // Check if user is verified on load
   useEffect(() => {
@@ -32,6 +45,56 @@ export default function LightMeasurementPage() {
     
     checkVerification();
   }, [router]);
+
+  // Get user's current location and check if it's in range of the project location
+  useEffect(() => {
+    const getUserLocation = () => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const userPos = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude
+            };
+            
+            setUserLocation(userPos);
+            
+            // Check if project data is loaded and has position
+            if (projectData && projectData.location) {
+              const projectLat = projectData.location.lat;
+              const projectLng = projectData.location.lng;
+              
+              // Calculate distance between user and project
+              const distance = getDistanceFromLatLonInKm(
+                userPos.latitude, 
+                userPos.longitude, 
+                projectLat, 
+                projectLng
+              );
+              
+              // Check if user is within project range
+              const inRange = distance <= (projectData.range || 1); // Default to 1km if range not specified
+              setIsInRange(inRange);
+              
+              if (!inRange) {
+                setLocationError(`You are not in range of this data collection point. You need to be within ${projectData.range || 1}km of the project location to contribute data.`);
+              }
+            }
+          },
+          (error) => {
+            console.error("Error getting location:", error);
+            setLocationError("Unable to get your current location. Please enable location services and try again.");
+          }
+        );
+      } else {
+        setLocationError("Geolocation is not supported by your browser. Unable to verify your position.");
+      }
+    };
+    
+    if (projectData) {
+      getUserLocation();
+    }
+  }, [projectData]);
 
   // Fetch project data if ID is provided
   useEffect(() => {
@@ -65,10 +128,66 @@ export default function LightMeasurementPage() {
     };
 
     fetchProjectData();
-  }, [projectCID, router]);
+    
+    // Check if we already have light data
+    if (hasDataOfType('light')) {
+      setMeasurementSaved(true);
+    }
+  }, [projectCID, router, hasDataOfType]);
   
   const goBack = () => {
     router.push(`/contribute?project=${projectCID}`);
+  };
+  
+  const startMeasuring = () => {
+    // Check if user is in range before starting measurement
+    if (!isInRange) {
+      alert(locationError || "You must be near the project location to collect data.");
+      return;
+    }
+    
+    setMeasuring(true);
+    
+    // Simulate light measurement for demo
+    setTimeout(() => {
+      const level = Math.floor(Math.random() * 1000) + 50; // 50-1050 lux
+      
+      let description = 'dim';
+      if (level > 800) description = 'bright';
+      else if (level > 400) description = 'moderate';
+      
+      setMeasurementResult({
+        level,
+        description
+      });
+      
+      setMeasuring(false);
+      setMeasurementCompleted(true);
+    }, 2000);
+  };
+  
+  const saveLightData = () => {
+    if (!measurementResult || !userLocation) return;
+    
+    // Add to collected data context
+    addData({
+      type: 'light',
+      timestamp: new Date().toISOString(),
+      data: {
+        level: measurementResult.level,
+        description: measurementResult.description,
+        location: {
+          latitude: userLocation.latitude,
+          longitude: userLocation.longitude,
+          accuracy: 10
+        }
+      }
+    });
+    
+    setMeasurementSaved(true);
+    
+    // Notify user
+    alert("Light measurement data saved! You can now submit all collected data from the contribute page.");
   };
 
   if (loading) {
@@ -86,27 +205,88 @@ export default function LightMeasurementPage() {
         
         {isVerified ? (
           <div className="bg-white p-6 rounded-lg shadow-md">
-            <p className="mb-4">
-              Welcome to the light intensity measurement page. This feature allows you to contribute
-              ambient light level data from your current location.
-            </p>
+            {locationError && !isInRange && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <div className="flex items-start">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-500 mt-0.5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <p className="text-sm text-red-700">{locationError}</p>
+                </div>
+              </div>
+            )}
             
-            <div className="bg-blue-50 p-4 rounded-lg mb-6">
-              <h2 className="font-bold text-lg mb-2">How it works:</h2>
-              <ol className="list-decimal pl-5 space-y-2">
-                <li>Grant light sensor permission when prompted</li>
-                <li>Press "Start Measuring" to begin light measurement</li>
-                <li>Keep your device stable for accurate reading</li>
-                <li>Review and submit your data to earn rewards</li>
-              </ol>
-            </div>
-            
-            <button 
-              className="w-full bg-blue-500 text-white py-3 rounded-lg font-medium hover:bg-blue-600 transition"
-              onClick={() => alert("Light measurement functionality will be implemented here.")}
-            >
-              Start Measuring
-            </button>
+            {!measurementCompleted ? (
+              <>
+                <p className="mb-4">
+                  Welcome to the light intensity measurement page. This feature allows you to contribute
+                  ambient light level data from your current location.
+                </p>
+                
+                <div className="bg-blue-50 p-4 rounded-lg mb-6">
+                  <h2 className="font-bold text-lg mb-2">How it works:</h2>
+                  <ol className="list-decimal pl-5 space-y-2">
+                    <li>Grant light sensor permission when prompted</li>
+                    <li>Press "Start Measuring" to begin light measurement</li>
+                    <li>Keep your device stable for accurate reading</li>
+                    <li>Review and submit your data to earn rewards</li>
+                  </ol>
+                </div>
+                
+                <button 
+                  className="w-full bg-blue-500 text-white py-3 rounded-lg font-medium hover:bg-blue-600 transition flex items-center justify-center"
+                  onClick={startMeasuring}
+                  disabled={measuring}
+                >
+                  {measuring ? (
+                    <>
+                      <div className="animate-spin h-5 w-5 mr-2 border-t-2 border-l-2 border-white rounded-full"></div>
+                      Measuring...
+                    </>
+                  ) : (
+                    "Start Measuring"
+                  )}
+                </button>
+              </>
+            ) : (
+              <div>
+                <div className="text-center mb-6">
+                  <div className="inline-block bg-green-100 p-4 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-lg font-bold mt-4 mb-1">Measurement Complete</h2>
+                  <p className="text-gray-500">Light intensity has been measured successfully.</p>
+                </div>
+                
+                <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                  <h3 className="font-medium mb-3">Results:</h3>
+                  <div className="bg-white p-3 rounded shadow text-center">
+                    <div className="text-xs text-gray-500 mb-1">LIGHT INTENSITY</div>
+                    <div className="text-xl font-bold">{measurementResult?.level} lux</div>
+                    <div className="text-sm text-gray-600 mt-1">({measurementResult?.description})</div>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={goBack}
+                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                    disabled={measuring}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveLightData}
+                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
+                    disabled={measurementSaved}
+                  >
+                    {measurementSaved ? "Data Saved" : "Save Data"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="bg-yellow-50 p-6 rounded-lg border border-yellow-200">
