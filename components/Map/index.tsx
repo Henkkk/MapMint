@@ -197,6 +197,29 @@ export const MapView = () => {
     router.push('/profile');
   };
 
+  // Handle navigation to create project
+  const navigateToCreateProject = () => {
+    try {
+      // Check if user is verified with World ID
+      const cookies = document.cookie.split(';');
+      const verifiedCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-verified='));
+      const isVerified = verifiedCookie?.includes('true') || false;
+      
+      if (!isVerified) {
+        // Show verification required message
+        alert("You must verify with World ID before creating a project. You will now be redirected to the verification page.");
+        router.push('/verify');
+        return;
+      }
+      
+      // If verified, proceed to project creation
+      router.push('/create-project');
+    } catch (error) {
+      console.error("Error navigating to create project:", error);
+      alert("An error occurred. Please try again.");
+    }
+  };
+
   return (
     <div className="h-[calc(100vh-4rem)] w-full relative overflow-hidden">
       {isLoading && (
@@ -481,6 +504,27 @@ export const MapView = () => {
                 />
               </svg>
               <span className="text-xs mt-1 font-medium">Map</span>
+            </button>
+
+            <button 
+              onClick={() => navigateToCreateProject()}
+              className="flex flex-col items-center justify-center w-full h-full text-gray-500 hover:text-blue-500"
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                className="h-6 w-6" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M12 4v16m8-8H4" 
+                />
+              </svg>
+              <span className="text-xs mt-1 font-medium">Create</span>
             </button>
             
             <button 
