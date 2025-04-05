@@ -132,9 +132,22 @@ export default function CreateProjectPage() {
   // Load Google Maps API
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyBXF5UM_K6GNpagXSZFjJopMVJnPOJIYkI',
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
     libraries: ['places'],
   });
+  
+  // Check for API key and handle error
+  useEffect(() => {
+    if (loadError) {
+      console.error("Error loading Google Maps API:", loadError);
+      setGeocodeError("Error loading Google Maps. Please check your API key.");
+    }
+    
+    if (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
+      console.error("Google Maps API key is missing in environment variables");
+      setGeocodeError("Google Maps API key is missing. Please add it to your environment variables.");
+    }
+  }, [loadError]);
   
   // Initialize Google Maps services after the script is loaded
   useEffect(() => {
@@ -201,7 +214,7 @@ export default function CreateProjectPage() {
         {
           componentRestrictions: { country: 'tw' }, // Restrict to Taiwan
           fields: ['address_components', 'geometry', 'name', 'formatted_address'],
-          types: ['address', 'establishment', 'geocode']
+          types: ['geocode'] // Changed from mixed types which caused the error
         }
       );
       
@@ -441,8 +454,33 @@ export default function CreateProjectPage() {
       projectCIDs.push(cid);
       localStorage.setItem('projectCIDs', JSON.stringify(projectCIDs));
       
-      // Also cache the project data for quick access
-      localStorage.setItem(`project-${cid}`, JSON.stringify(projectData));
+      // Create a version of the project data safe for localStorage
+      // This avoids the "QuotaExceededError" by removing the potentially large image data
+      const localStorageProjectData = {
+        ...projectData,
+        imageUrl: imagePreview ? 'IMAGE_DATA_STORED_ELSEWHERE' : undefined
+      };
+      
+      // Store the trimmed version in localStorage
+      try {
+        localStorage.setItem(`project-${cid}`, JSON.stringify(localStorageProjectData));
+      } catch (storageError) {
+        console.warn("Could not store full project in localStorage:", storageError);
+        // Try with even less data if necessary
+        try {
+          const minimalProjectData = {
+            title: localStorageProjectData.title,
+            description: localStorageProjectData.description,
+            location: localStorageProjectData.location,
+            address: localStorageProjectData.address,
+            cid: cid
+          };
+          localStorage.setItem(`project-${cid}`, JSON.stringify(minimalProjectData));
+        } catch (fallbackError) {
+          console.error("Failed to store even minimal project data:", fallbackError);
+          // Continue without storing in localStorage
+        }
+      }
       
       alert("Project created successfully!");
       

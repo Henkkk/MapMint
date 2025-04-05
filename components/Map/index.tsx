@@ -29,6 +29,14 @@ export const MapView = () => {
     libraries: ['places'],
   });
   
+  // Show error message if API key is missing
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
+      console.error("Google Maps API key is missing in environment variables");
+      alert("Google Maps API key is missing. Some features may not work properly.");
+    }
+  }, []);
+  
   // Default center position (Taipei City)
   const defaultCenter = {
     lat: 25.033964,
@@ -252,6 +260,92 @@ export const MapView = () => {
     }
   };
 
+  // Check if user is the project owner
+  const isProjectOwner = (pin: ProjectPin): boolean => {
+    try {
+      // Get the user's World ID verified address from cookie
+      const cookies = document.cookie.split(';');
+      const addressCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-address='));
+      const userAddress = addressCookie ? decodeURIComponent(addressCookie.split('=')[1]) : '';
+      
+      // Get project data from localStorage
+      const projectData = localStorage.getItem(`project-${pin.cid}`);
+      if (!projectData) return false;
+      
+      const parsedData = JSON.parse(projectData);
+      
+      // Compare the createdBy field with the user's address
+      return parsedData.createdBy === userAddress;
+    } catch (error) {
+      console.error("Error checking project ownership:", error);
+      return false;
+    }
+  };
+
+  // View project's collected data
+  const viewProjectData = (pin: ProjectPin) => {
+    try {
+      // Check if user is verified with World ID
+      const cookies = document.cookie.split(';');
+      const verifiedCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-verified='));
+      const isVerified = verifiedCookie?.includes('true') || false;
+      
+      if (!isVerified) {
+        alert("You must verify with World ID first.");
+        router.push('/verify');
+        return;
+      }
+      
+      // Navigate to the data view page for this project
+      router.push(`/project-data?project=${pin.cid}`);
+    } catch (error) {
+      console.error("Error navigating to project data:", error);
+      alert("An error occurred. Please try again.");
+    }
+  };
+
+  // End the project
+  const endProject = (pin: ProjectPin) => {
+    try {
+      // Check if user is verified with World ID
+      const cookies = document.cookie.split(';');
+      const verifiedCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-verified='));
+      const isVerified = verifiedCookie?.includes('true') || false;
+      
+      if (!isVerified) {
+        alert("You must verify with World ID first.");
+        router.push('/verify');
+        return;
+      }
+      
+      // Confirm user wants to end the project
+      if (confirm("Are you sure you want to end this project? This action cannot be undone.")) {
+        // Get project data from localStorage
+        const projectDataStr = localStorage.getItem(`project-${pin.cid}`);
+        if (projectDataStr) {
+          const projectData = JSON.parse(projectDataStr);
+          projectData.status = 'completed';
+          localStorage.setItem(`project-${pin.cid}`, JSON.stringify(projectData));
+          
+          // Update the pin in the current state
+          const updatedPin = { ...pin, status: 'completed' as 'completed' };
+          setSelectedPin(updatedPin);
+          
+          // Update the project pins
+          const index = projectPins.findIndex(p => p.cid === pin.cid);
+          if (index !== -1) {
+            projectPins[index] = updatedPin;
+          }
+          
+          alert("Project successfully completed!");
+        }
+      }
+    } catch (error) {
+      console.error("Error ending project:", error);
+      alert("An error occurred. Please try again.");
+    }
+  };
+
   return (
     <div className="h-[calc(100vh-4rem)] w-full relative overflow-hidden">
       {isLoading && (
@@ -466,7 +560,8 @@ export const MapView = () => {
                   <h2 className="text-xl font-bold">{selectedPin.title}</h2>
                 </div>
                 
-                {isProjectPin(selectedPin) && selectedPin.imageUrl && (
+                {isProjectPin(selectedPin) && selectedPin.imageUrl && 
+                  selectedPin.imageUrl !== 'IMAGE_DATA_STORED_ELSEWHERE' && (
                   <div className="mb-4 rounded-lg overflow-hidden relative h-48 w-full">
                     <Image
                       src={selectedPin.imageUrl}
@@ -493,7 +588,7 @@ export const MapView = () => {
                   
                   {isProjectPin(selectedPin) && (
                     <span className="px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
-                      Project Range: {selectedPin.range.toFixed(1)} km
+                      Project Range: {typeof selectedPin.range === 'number' ? selectedPin.range.toFixed(1) : '1.0'} km
                     </span>
                   )}
                   
@@ -571,15 +666,53 @@ export const MapView = () => {
                 )}
               </div>
               
-              <button 
-                onClick={() => startMeasuring(selectedPin)}
-                className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center justify-center gap-2"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                </svg>
-                <span>Contribute Data</span>
-              </button>
+              {isProjectPin(selectedPin) && isProjectOwner(selectedPin) ? (
+                <div className="space-y-3">
+                  <button 
+                    onClick={() => viewProjectData(selectedPin)}
+                    className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center justify-center gap-2"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    <span>View Collected Data</span>
+                  </button>
+                  
+                  {selectedPin.status === 'active' && (
+                    <>
+                      <button 
+                        onClick={() => startMeasuring(selectedPin)}
+                        className="w-full px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition flex items-center justify-center gap-2"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                        </svg>
+                        <span>Contribute Data</span>
+                      </button>
+                      
+                      <button 
+                        onClick={() => endProject(selectedPin)}
+                        className="w-full px-4 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center justify-center gap-2"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>End Project</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <button 
+                  onClick={() => startMeasuring(selectedPin)}
+                  className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center justify-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                  <span>Contribute Data</span>
+                </button>
+              )}
             </div>
           )}
         </div>

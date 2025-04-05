@@ -54,61 +54,39 @@ export const loadProjectPins = async () => {
     const projectCIDs = JSON.parse(projectCIDsStr);
     if (!Array.isArray(projectCIDs) || projectCIDs.length === 0) return;
     
-    // For demo purposes, we'll create mock project pins
-    // In a real app, you would fetch each project from IPFS using the CIDs
-    projectPins = projectCIDs.map((cid, index) => {
-      // Try to get cached project data
-      const cachedDataStr = localStorage.getItem(`project-${cid}`);
-      if (cachedDataStr) {
-        try {
-          const cachedData = JSON.parse(cachedDataStr);
-          return {
-            id: cachedData.id || `project-${index}`,
-            position: [cachedData.location.lat, cachedData.location.lng],
-            title: cachedData.title || 'Project',
-            description: cachedData.description || 'User created project',
-            cid,
-            imageUrl: cachedData.imageUrl,
-            range: cachedData.range || 1,
-            rewards: cachedData.rewards,
-            dataToCollect: cachedData.dataToCollect || {
-              backgroundNoise: true,
-              wifiSpeed: false,
-              lightIntensity: false
-            },
-            endDate: cachedData.endDate,
-            status: cachedData.status || 'active'
-          };
-        } catch (e) {
-          console.error('Error parsing cached project data:', e);
+    // Only load projects that actually exist in localStorage
+    projectPins = projectCIDs
+      .map((cid, index) => {
+        // Try to get cached project data
+        const cachedDataStr = localStorage.getItem(`project-${cid}`);
+        if (cachedDataStr) {
+          try {
+            const cachedData = JSON.parse(cachedDataStr);
+            return {
+              id: cachedData.id || `project-${index}`,
+              position: [cachedData.location.lat, cachedData.location.lng],
+              title: cachedData.title || 'Project',
+              description: cachedData.description || 'User created project',
+              cid,
+              imageUrl: cachedData.imageUrl,
+              range: typeof cachedData.range === 'number' ? cachedData.range : 1,
+              rewards: cachedData.rewards,
+              dataToCollect: cachedData.dataToCollect || {
+                backgroundNoise: true,
+                wifiSpeed: false,
+                lightIntensity: false
+              },
+              endDate: cachedData.endDate,
+              status: cachedData.status || 'active'
+            };
+          } catch (e) {
+            console.error('Error parsing cached project data:', e);
+            return null;
+          }
         }
-      }
-      
-      // Fallback to mock data if no cache exists
-      // In a real app, you would fetch from IPFS here
-      return {
-        id: `project-${index}`,
-        position: [
-          25.03 + (Math.random() * 0.1 - 0.05), 
-          121.56 + (Math.random() * 0.1 - 0.05)
-        ],
-        title: `User Project ${index + 1}`,
-        description: 'A user created noise collection project',
-        cid,
-        imageUrl: `https://source.unsplash.com/random/300x200?city,${index}`, // Mock image
-        range: 1 + Math.random() * 4,
-        rewards: {
-          worldcoin: Math.floor(Math.random() * 100) / 100
-        },
-        dataToCollect: {
-          backgroundNoise: true,
-          wifiSpeed: Math.random() > 0.5,
-          lightIntensity: Math.random() > 0.5
-        },
-        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'active'
-      };
-    });
+        return null;
+      })
+      .filter(Boolean) as ProjectPin[]; // Filter out nulls
     
     console.log(`Loaded ${projectPins.length} project pins`);
   } catch (error) {
