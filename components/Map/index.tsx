@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { MapPin, mapPins, getPinsByDistance } from '../../lib/map-pins';
+import { MapPin, mapPins, getPinsByDistance, loadProjectPins, projectPins, ProjectPin } from '../../lib/map-pins';
 import { useRouter } from 'next/navigation';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 
 // Map Component using Google Maps
 export const MapView = () => {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
-  const [nearbyPins, setNearbyPins] = useState<MapPin[]>([]);
-  const [selectedPin, setSelectedPin] = useState<MapPin | null>(null);
+  const [nearbyPins, setNearbyPins] = useState<(MapPin | ProjectPin)[]>([]);
+  const [selectedPin, setSelectedPin] = useState<MapPin | ProjectPin | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -34,6 +34,20 @@ export const MapView = () => {
     lng: 121.564468
   };
   
+  // Load project pins from localStorage
+  useEffect(() => {
+    const loadProjects = async () => {
+      await loadProjectPins();
+      // Update nearby pins if user location is already set
+      if (userLocation) {
+        const nearby = getPinsByDistance(userLocation[0], userLocation[1], 5);
+        setNearbyPins(nearby);
+      }
+    };
+    
+    loadProjects();
+  }, [userLocation]);
+  
   // Get user's current location
   useEffect(() => {
     if (navigator.geolocation) {
@@ -43,6 +57,7 @@ export const MapView = () => {
             position.coords.latitude,
             position.coords.longitude
           ];
+          console.log("User location set:", newPosition);
           setUserLocation(newPosition);
           
           // Find pins within 5km of user location
@@ -51,22 +66,22 @@ export const MapView = () => {
           
           setIsLoading(false);
           
-          // Get address from coordinates
-          if (isLoaded && window.google) {
-            const geocoder = new window.google.maps.Geocoder();
-            geocoder.geocode(
-              { 
-                location: { lat: newPosition[0], lng: newPosition[1] } 
-              },
-              (results, status) => {
-                if (status === "OK" && results && results[0]) {
-                  setLocationAddress(results[0].formatted_address);
-                } else {
-                  setLocationAddress('Address not found');
-                }
-              }
-            );
-          }
+          // Disable geocoding to avoid API key authorization error
+          // if (isLoaded && window.google) {
+          //   const geocoder = new window.google.maps.Geocoder();
+          //   geocoder.geocode(
+          //     { 
+          //       location: { lat: newPosition[0], lng: newPosition[1] } 
+          //     },
+          //     (results: google.maps.GeocoderResult[], status: google.maps.GeocoderStatus) => {
+          //       if (status === "OK" && results && results[0]) {
+          //         setLocationAddress(results[0].formatted_address);
+          //       } else {
+          //         setLocationAddress('Address not found');
+          //       }
+          //     }
+          //   );
+          // }
         },
         (error) => {
           console.error("Error getting location:", error);
@@ -79,13 +94,13 @@ export const MapView = () => {
   }, [isLoaded]);
   
   // Handle pin click
-  const handlePinClick = (pin: MapPin) => {
+  const handlePinClick = (pin: MapPin | ProjectPin) => {
     setSelectedPin(pin);
     setDrawerOpen(true);
   };
   
   // Start measuring at selected pin location
-  const startMeasuring = (pin: MapPin) => {
+  const startMeasuring = (pin: MapPin | ProjectPin) => {
     try {
       // Check if user is verified with World ID
       const cookies = document.cookie.split(';');
@@ -105,6 +120,16 @@ export const MapView = () => {
       console.error("Error in startMeasuring:", error);
       alert("An error occurred. Please try again.");
     }
+  };
+
+  // Check if a pin is a MapPin (has priority property)
+  const isMapPin = (pin: MapPin | ProjectPin): pin is MapPin => {
+    return 'priority' in pin;
+  };
+
+  // Check if a pin is a ProjectPin (has range property)
+  const isProjectPin = (pin: MapPin | ProjectPin): pin is ProjectPin => {
+    return 'range' in pin;
   };
 
   // Map load callback
@@ -248,13 +273,8 @@ export const MapView = () => {
                 <Marker
                   position={{ lat: userLocation[0], lng: userLocation[1] }}
                   icon={{
-                    path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
-                    fillColor: '#2563eb',
-                    fillOpacity: 1,
-                    strokeWeight: 2,
-                    strokeColor: '#ffffff',
-                    scale: 1.5,
-                    anchor: new google.maps.Point(12, 22),
+                    url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+                    scaledSize: new google.maps.Size(50, 50)
                   }}
                   title="Your location"
                 />
@@ -283,6 +303,24 @@ export const MapView = () => {
                   />
                 );
               })}
+              
+              {/* Project pins */}
+              {projectPins.map((pin) => (
+                <Marker
+                  key={pin.id}
+                  position={{ lat: pin.position[0], lng: pin.position[1] }}
+                  onClick={() => handlePinClick(pin)}
+                  icon={{
+                    path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
+                    fillColor: '#10b981', // Green color for project pins
+                    fillOpacity: 1,
+                    strokeWeight: 2,
+                    strokeColor: '#ffffff',
+                    scale: 2.2,
+                    anchor: new google.maps.Point(12, 22),
+                  }}
+                />
+              ))}
             </GoogleMap>
             
             {/* User location display */}
@@ -409,72 +447,102 @@ export const MapView = () => {
           
           {/* Pin details */}
           {selectedPin && (
-            <div className="p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <div className={`w-4 h-4 rounded-full ${
-                  selectedPin.priority === 'high' ? 'bg-red-500' :
-                  selectedPin.priority === 'medium' ? 'bg-yellow-500' :
-                  'bg-blue-500'
-                }`}></div>
-                <h2 className="text-xl font-bold">{selectedPin.title}</h2>
-              </div>
-              
-              <p className="text-base mb-4">{selectedPin.description}</p>
-              
-              <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                <h3 className="font-semibold mb-2 text-gray-700">Project Details</h3>
+            <div className="px-6 py-4">
+              <div className="mb-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={`w-4 h-4 rounded-full ${
+                    isProjectPin(selectedPin) ? 'bg-green-500' :
+                    selectedPin.priority === 'high' ? 'bg-red-500' :
+                    selectedPin.priority === 'medium' ? 'bg-yellow-500' :
+                    'bg-blue-500'
+                  }`}></div>
+                  <h2 className="text-xl font-bold">{selectedPin.title}</h2>
+                </div>
+                
+                <p className="text-gray-700 mb-4">{selectedPin.description}</p>
                 
                 <div className="flex justify-between items-center mb-3">
-                  <span className={`px-3 py-1 rounded-full text-sm ${
-                    selectedPin.priority === 'high' ? 'bg-red-100 text-red-800' :
-                    selectedPin.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-blue-100 text-blue-800'
-                  }`}>
-                    {selectedPin.priority.charAt(0).toUpperCase() + selectedPin.priority.slice(1)} Priority
-                  </span>
+                  {isMapPin(selectedPin) && (
+                    <span className={`px-3 py-1 rounded-full text-sm ${
+                      selectedPin.priority === 'high' ? 'bg-red-100 text-red-800' :
+                      selectedPin.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-blue-100 text-blue-800'
+                    }`}>
+                      {selectedPin.priority.charAt(0).toUpperCase() + selectedPin.priority.slice(1)} Priority
+                    </span>
+                  )}
                   
-                  {selectedPin.rewards && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-600">Rewards:</span>
-                      <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                        {selectedPin.rewards.points} pts
-                        {selectedPin.rewards.worldcoin && ` + ${selectedPin.rewards.worldcoin} WLD`}
+                  {isProjectPin(selectedPin) && (
+                    <span className="px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
+                      Project Range: {selectedPin.range.toFixed(1)} km
+                    </span>
+                  )}
+                  
+                  {isMapPin(selectedPin) && selectedPin.rewards && (
+                    <div className="flex items-center">
+                      <span className="px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {selectedPin.rewards.points} Points
+                      </span>
+                      
+                      {selectedPin.rewards.worldcoin && (
+                        <span className="ml-2 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="currentColor">
+                            <circle cx="12" cy="12" r="10" strokeWidth="2" stroke="currentColor" fill="none" />
+                            <path d="M12 6v12M6 12h12" strokeWidth="2" stroke="currentColor" strokeLinecap="round" />
+                          </svg>
+                          {selectedPin.rewards.worldcoin} WLD
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  
+                  {isProjectPin(selectedPin) && selectedPin.rewards && (
+                    <div className="flex items-center">
+                      <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="currentColor">
+                          <circle cx="12" cy="12" r="10" strokeWidth="2" stroke="currentColor" fill="none" />
+                          <path d="M12 6v12M6 12h12" strokeWidth="2" stroke="currentColor" strokeLinecap="round" />
+                        </svg>
+                        {selectedPin.rewards.worldcoin} WLD
                       </span>
                     </div>
                   )}
                 </div>
                 
-                {selectedPin.requirements && (
-                  <div className="text-sm text-gray-700">
-                    <div className="flex items-center gap-2 mb-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                      <span><span className="font-semibold">Required:</span> {selectedPin.requirements.minMeasurements} measurements</span>
+                {isMapPin(selectedPin) && selectedPin.requirements && (
+                  <div className="mt-4 p-4 bg-gray-50 rounded-md">
+                    <h3 className="font-medium mb-2">Requirements</h3>
+                    <div className="text-sm">
+                      <div className="mb-1">Minimum Measurements: {selectedPin.requirements.minMeasurements}</div>
+                      {selectedPin.requirements.timeOfDay && (
+                        <div>Best time to measure: <span className="font-medium">{selectedPin.requirements.timeOfDay.charAt(0).toUpperCase() + selectedPin.requirements.timeOfDay.slice(1)}</span></div>
+                      )}
                     </div>
-                    
-                    {selectedPin.requirements.timeOfDay && selectedPin.requirements.timeOfDay !== 'any' && (
-                      <div className="flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span><span className="font-semibold">Best time:</span> {selectedPin.requirements.timeOfDay}</span>
-                      </div>
-                    )}
+                  </div>
+                )}
+                
+                {isProjectPin(selectedPin) && (
+                  <div className="mt-4 p-4 bg-gray-50 rounded-md">
+                    <h3 className="font-medium mb-2">Project Details</h3>
+                    <div className="text-sm">
+                      <div className="mb-1">End Date: {new Date(selectedPin.endDate).toLocaleDateString()}</div>
+                      <div>Status: <span className="font-medium">{selectedPin.status.charAt(0).toUpperCase() + selectedPin.status.slice(1)}</span></div>
+                    </div>
                   </div>
                 )}
               </div>
               
               <button 
                 onClick={() => startMeasuring(selectedPin)}
-                className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium mb-14"
+                className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center justify-center gap-2"
               >
-                <div className="flex items-center justify-center gap-2">
-                  <span>Contribute Data</span>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+                <span>Contribute Data</span>
               </button>
             </div>
           )}

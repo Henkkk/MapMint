@@ -16,117 +16,93 @@ export interface MapPin {
   };
 }
 
+// Project pin interface for showing user projects on the map
+export interface ProjectPin {
+  id: string;
+  position: [number, number]; // [latitude, longitude]
+  title: string;
+  description: string;
+  cid: string; // IPFS content ID
+  range: number; // collection range in km
+  rewards?: {
+    worldcoin: number;
+  };
+  endDate: string;
+  status: 'active' | 'completed' | 'expired';
+}
+
 // Sample pins for various areas that need noise data collection
-export const mapPins: MapPin[] = [
-  {
-    id: 'pin-001',
-    position: [25.033964, 121.564468], // Taipei 101 area
-    title: 'Taipei 101 District',
-    description: 'Collect noise data around the busy Taipei 101 commercial district.',
-    priority: 'high',
-    status: 'pending',
-    rewards: {
-      points: 100,
-      worldcoin: 0.1
-    },
-    requirements: {
-      minMeasurements: 3,
-      timeOfDay: 'evening'
-    }
-  },
-  {
-    id: 'pin-002',
-    position: [25.046661, 121.517606], // Taipei Main Station
-    title: 'Taipei Main Station',
-    description: 'Measure noise levels around the transportation hub at different times.',
-    priority: 'high',
-    status: 'pending',
-    rewards: {
-      points: 120,
-      worldcoin: 0.15
-    },
-    requirements: {
-      minMeasurements: 5,
-      timeOfDay: 'any'
-    }
-  },
-  {
-    id: 'pin-003',
-    position: [25.027154, 121.543846], // Da'an Forest Park
-    title: 'Da\'an Forest Park',
-    description: 'Collect quiet area baseline measurements in the park.',
-    priority: 'medium',
-    status: 'pending',
-    rewards: {
-      points: 80
-    },
-    requirements: {
-      minMeasurements: 2,
-      timeOfDay: 'morning'
-    }
-  },
-  {
-    id: 'pin-004',
-    position: [25.058582, 121.535226], // Shilin Night Market
-    title: 'Shilin Night Market',
-    description: 'Measure noise pollution in the busy night market area.',
-    priority: 'high',
-    status: 'pending',
-    rewards: {
-      points: 150,
-      worldcoin: 0.2
-    },
-    requirements: {
-      minMeasurements: 4,
-      timeOfDay: 'night'
-    }
-  },
-  {
-    id: 'pin-005',
-    position: [25.014661, 121.533418], // Gongguan area
-    title: 'Gongguan District',
-    description: 'Collect noise data near the university and shopping area.',
-    priority: 'medium',
-    status: 'pending',
-    rewards: {
-      points: 90,
-      worldcoin: 0.05
-    },
-    requirements: {
-      minMeasurements: 3,
-      timeOfDay: 'afternoon'
-    }
-  },
-  {
-    id: 'pin-006',
-    position: [25.040455, 121.558456], // Songshan MRT
-    title: 'Songshan Station Area',
-    description: 'Measure transit noise levels around the MRT station.',
-    priority: 'low',
-    status: 'pending',
-    rewards: {
-      points: 70
-    },
-    requirements: {
-      minMeasurements: 2
-    }
-  },
-  {
-    id: 'pin-007',
-    position: [25.079477, 121.578559], // Neihu Technology Park
-    title: 'Neihu Tech Park',
-    description: 'Collect data on urban technology district sound levels.',
-    priority: 'medium',
-    status: 'pending',
-    rewards: {
-      points: 85
-    },
-    requirements: {
-      minMeasurements: 3,
-      timeOfDay: 'afternoon'
-    }
+export const mapPins: MapPin[] = [];
+
+// Projects created by users
+export let projectPins: ProjectPin[] = [];
+
+// Load project pins from localStorage
+export const loadProjectPins = async () => {
+  try {
+    if (typeof window === 'undefined') return; // Skip on server-side
+    
+    const projectCIDsStr = localStorage.getItem('projectCIDs');
+    if (!projectCIDsStr) return;
+    
+    const projectCIDs = JSON.parse(projectCIDsStr);
+    if (!Array.isArray(projectCIDs) || projectCIDs.length === 0) return;
+    
+    // For demo purposes, we'll create mock project pins
+    // In a real app, you would fetch each project from IPFS using the CIDs
+    projectPins = projectCIDs.map((cid, index) => {
+      // Try to get cached project data
+      const cachedDataStr = localStorage.getItem(`project-${cid}`);
+      if (cachedDataStr) {
+        try {
+          const cachedData = JSON.parse(cachedDataStr);
+          return {
+            id: cachedData.id || `project-${index}`,
+            position: [cachedData.location.lat, cachedData.location.lng],
+            title: cachedData.title || 'Project',
+            description: cachedData.description || 'User created project',
+            cid,
+            range: cachedData.range || 1,
+            rewards: cachedData.rewards,
+            endDate: cachedData.endDate,
+            status: cachedData.status || 'active'
+          };
+        } catch (e) {
+          console.error('Error parsing cached project data:', e);
+        }
+      }
+      
+      // Fallback to mock data if no cache exists
+      // In a real app, you would fetch from IPFS here
+      return {
+        id: `project-${index}`,
+        position: [
+          25.03 + (Math.random() * 0.1 - 0.05), 
+          121.56 + (Math.random() * 0.1 - 0.05)
+        ],
+        title: `User Project ${index + 1}`,
+        description: 'A user created noise collection project',
+        cid,
+        range: 1 + Math.random() * 4,
+        rewards: {
+          worldcoin: Math.floor(Math.random() * 100) / 100
+        },
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'active'
+      };
+    });
+    
+    console.log(`Loaded ${projectPins.length} project pins`);
+  } catch (error) {
+    console.error('Error loading project pins:', error);
+    projectPins = [];
   }
-];
+};
+
+// Get all pins including projects
+export const getAllPins = (): (MapPin | ProjectPin)[] => {
+  return [...mapPins, ...projectPins];
+};
 
 // Get pins by status
 export const getPendingPins = () => mapPins.filter(pin => pin.status === 'pending');
@@ -140,10 +116,11 @@ export const getLowPriorityPins = () => mapPins.filter(pin => pin.priority === '
 
 // Get pins by distance from current location
 export const getPinsByDistance = (lat: number, lng: number, maxDistanceKm: number = 5) => {
-  return mapPins.filter(pin => {
+  const pins = getAllPins().filter(pin => {
     const distance = getDistanceFromLatLonInKm(lat, lng, pin.position[0], pin.position[1]);
     return distance <= maxDistanceKm;
   });
+  return pins;
 };
 
 // Calculate distance between two coordinates in kilometers using the Haversine formula
