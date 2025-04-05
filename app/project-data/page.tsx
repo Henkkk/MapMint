@@ -27,7 +27,8 @@ export default function ProjectDataPage() {
   const [projectData, setProjectData] = useState<any>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [distributions, setDistributions] = useState<Array<{address: string, amount: number}>>([]);
+  const [distributions, setDistributions] = useState<Array<{address: string, amount: number, username?: string}>>([]);
+  const [potentialDistributions, setPotentialDistributions] = useState<Array<{address: string, amount: number, username?: string}>>([]);
   
   // Check if user is verified and project owner
   useEffect(() => {
@@ -69,6 +70,7 @@ export default function ProjectDataPage() {
         // Get user address
         const addressCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-address='));
         const userAddress = addressCookie ? decodeURIComponent(addressCookie.split('=')[1]) : '';
+        console.log("Current user address:", userAddress);
         
         // Check if user is the owner
         const isOwner = projectData.createdBy === userAddress;
@@ -83,14 +85,39 @@ export default function ProjectDataPage() {
         // Load submissions
         const allSubmissions = JSON.parse(localStorage.getItem('submissions') || '[]');
         const projectSubmissions = allSubmissions.filter((s: Submission) => s.projectCID === projectCID);
-        setSubmissions(projectSubmissions);
+        
+        // Ensure all submissions have a user address
+        const processedSubmissions = projectSubmissions.map((s: Submission) => {
+          if (!s.userAddress) {
+            // If submission doesn't have user address, use a placeholder or mock address
+            return {...s, userAddress: `user-${Math.floor(Math.random() * 1000)}`};
+          }
+          return s;
+        });
+        
+        console.log("Found submissions:", processedSubmissions.length);
+        setSubmissions(processedSubmissions);
         
         // Load distributions if project is completed
         if (projectData.status === 'completed') {
           const distributionsData = localStorage.getItem(`project-${projectCID}-distributions`);
           if (distributionsData) {
-            setDistributions(JSON.parse(distributionsData));
+            const parsedDistributions = JSON.parse(distributionsData);
+            console.log("Loaded completed distributions:", parsedDistributions.length);
+            setDistributions(parsedDistributions);
+          } else {
+            console.log("No saved distributions found for completed project");
+            // Calculate distributions for completed projects if none exist
+            if (processedSubmissions.length > 0) {
+              calculateAndSaveDistributions(processedSubmissions, projectData.rewards.worldcoin, projectCID);
+            }
           }
+        } else if (processedSubmissions.length > 0) {
+          // Calculate potential distributions for active projects
+          console.log("Calculating potential distributions for active project");
+          calculatePotentialDistributions(processedSubmissions, projectData.rewards.worldcoin);
+        } else {
+          console.log("No submissions to calculate distributions");
         }
         
         setLoading(false);
@@ -103,6 +130,138 @@ export default function ProjectDataPage() {
     
     checkVerification();
   }, [projectCID, router]);
+  
+  // Calculate and save actual distributions
+  const calculateAndSaveDistributions = (submissions: Submission[], totalReward: number, projectCID: string) => {
+    try {
+      // Calculate reward per user based on their contribution
+      const contributionCounts: {[address: string]: number} = {};
+      const contributorAddresses: string[] = [];
+      
+      // Count contributions by each user
+      submissions.forEach((submission: Submission) => {
+        const userAddress = submission.userAddress || 'unknown-user';
+        if (userAddress) {
+          if (!contributionCounts[userAddress]) {
+            contributionCounts[userAddress] = 0;
+            contributorAddresses.push(userAddress);
+          }
+          contributionCounts[userAddress] += submission.data.length; // Count each data item as a contribution
+        }
+      });
+      
+      console.log("Contributors found:", contributorAddresses.length);
+      console.log("Contribution counts:", contributionCounts);
+      
+      // Calculate total contribution points
+      const totalContributions = Object.values(contributionCounts).reduce((sum, count) => sum + count, 0);
+      console.log("Total contributions:", totalContributions);
+      
+      if (totalContributions > 0 && contributorAddresses.length > 0) {
+        // Calculate and distribute rewards
+        const newDistributions: {address: string, amount: number, username?: string}[] = [];
+        contributorAddresses.forEach(address => {
+          const userContributionRatio = contributionCounts[address] / totalContributions;
+          const rewardAmount = parseFloat((totalReward * userContributionRatio).toFixed(6));
+          const username = getUsernameForAddress(address);
+          newDistributions.push({
+            address,
+            amount: rewardAmount,
+            username
+          });
+        });
+        
+        // Store distributions in localStorage
+        localStorage.setItem(`project-${projectCID}-distributions`, JSON.stringify(newDistributions));
+        console.log("Saved distributions:", newDistributions);
+        setDistributions(newDistributions);
+      } else {
+        console.log("No valid contributions to calculate distributions");
+      }
+    } catch (error) {
+      console.error("Error calculating distributions:", error);
+    }
+  };
+  
+  // Calculate potential distributions based on current submissions
+  const calculatePotentialDistributions = (submissions: Submission[], totalReward: number) => {
+    try {
+      // Calculate reward per user based on their contribution
+      const contributionCounts: {[address: string]: number} = {};
+      const contributorAddresses: string[] = [];
+      
+      // Count contributions by each user
+      submissions.forEach((submission: Submission) => {
+        const userAddress = submission.userAddress || 'unknown-user';
+        if (userAddress) {
+          if (!contributionCounts[userAddress]) {
+            contributionCounts[userAddress] = 0;
+            contributorAddresses.push(userAddress);
+          }
+          contributionCounts[userAddress] += submission.data.length; // Count each data item as a contribution
+        }
+      });
+      
+      console.log("Potential contributors found:", contributorAddresses.length);
+      
+      // Calculate total contribution points
+      const totalContributions = Object.values(contributionCounts).reduce((sum, count) => sum + count, 0);
+      console.log("Total potential contributions:", totalContributions);
+      
+      if (totalContributions > 0 && contributorAddresses.length > 0) {
+        // Calculate distributions
+        const distributions: {address: string, amount: number, username?: string}[] = [];
+        contributorAddresses.forEach(address => {
+          const userContributionRatio = contributionCounts[address] / totalContributions;
+          const rewardAmount = parseFloat((totalReward * userContributionRatio).toFixed(6));
+          const username = getUsernameForAddress(address);
+          distributions.push({
+            address,
+            amount: rewardAmount,
+            username
+          });
+        });
+        
+        console.log("Calculated potential distributions:", distributions);
+        setPotentialDistributions(distributions);
+      } else {
+        console.log("No valid contributions to calculate potential distributions");
+      }
+    } catch (error) {
+      console.error("Error calculating potential distributions:", error);
+    }
+  };
+  
+  // Helper function to get username for an address
+  const getUsernameForAddress = (address: string): string => {
+    try {
+      // Check if MiniKit is available globally (for World mini apps)
+      if (typeof window !== 'undefined' && 
+          'MiniKit' in window && 
+          (window as any).MiniKit?.user && 
+          (window as any).MiniKit.user.address === address) {
+        return (window as any).MiniKit.user.username;
+      }
+      
+      // Try to get from local storage address book as fallback
+      const addressBook = JSON.parse(localStorage.getItem('address-book') || '{}');
+      if (addressBook[address]) {
+        return addressBook[address];
+      }
+      
+      // If no entry in address book, check if we have cached World ID user data
+      const worldIDUsers = JSON.parse(localStorage.getItem('world-id-users') || '{}');
+      if (worldIDUsers[address]) {
+        return worldIDUsers[address].username;
+      }
+      
+      // Fallback to username format based on address
+      return `user-${address.substring(0, 4)}`;
+    } catch (error) {
+      console.error("Error getting username for address:", error);
+      return `user-${address.substring(0, 4)}`;
+    }
+  };
   
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -139,6 +298,7 @@ export default function ProjectDataPage() {
           // Calculate and distribute rewards if there are submissions
           if (submissions && submissions.length > 0) {
             console.log("Found", submissions.length, "submissions for project");
+            
             // Calculate reward per user based on their contribution
             const totalReward = projectData.rewards.worldcoin;
             const contributionCounts: {[address: string]: number} = {};
@@ -146,7 +306,7 @@ export default function ProjectDataPage() {
             
             // Count contributions by each user
             submissions.forEach((submission: Submission) => {
-              const userAddress = submission.userAddress || getCookieValue('world-id-address');
+              const userAddress = submission.userAddress || 'unknown-user';
               if (userAddress) {
                 if (!contributionCounts[userAddress]) {
                   contributionCounts[userAddress] = 0;
@@ -156,18 +316,23 @@ export default function ProjectDataPage() {
               }
             });
             
+            console.log("Contributors found:", contributorAddresses.length);
+            
             // Calculate total contribution points
             const totalContributions = Object.values(contributionCounts).reduce((sum, count) => sum + count, 0);
+            console.log("Total contributions:", totalContributions);
             
             if (totalContributions > 0 && contributorAddresses.length > 0) {
               // Calculate and distribute rewards
-              const newDistributions: {address: string, amount: number}[] = [];
+              const newDistributions: {address: string, amount: number, username?: string}[] = [];
               contributorAddresses.forEach(address => {
                 const userContributionRatio = contributionCounts[address] / totalContributions;
                 const rewardAmount = parseFloat((totalReward * userContributionRatio).toFixed(6));
+                const username = getUsernameForAddress(address);
                 newDistributions.push({
                   address,
-                  amount: rewardAmount
+                  amount: rewardAmount,
+                  username
                 });
               });
               
@@ -177,8 +342,9 @@ export default function ProjectDataPage() {
               
               // Show distribution details
               const distributionMessage = 'Project completed! Rewards distributed:\n\n' + 
-                newDistributions.map(d => `${d.address.substring(0, 8)}...${d.address.substring(d.address.length - 6)}: ${d.amount} WLD`).join('\n');
+                newDistributions.map(d => `${d.username || `${d.address.substring(0, 6)}...${d.address.substring(d.address.length - 4)}`}: ${d.amount} WLD`).join('\n');
               
+              console.log("Distributions saved:", newDistributions);
               alert(distributionMessage);
             } else {
               console.log("No valid contributions found");
@@ -323,6 +489,44 @@ export default function ProjectDataPage() {
           </div>
         )}
         
+        {/* Display potential reward distributions for active projects */}
+        {projectData && projectData.status === 'active' && potentialDistributions.length > 0 && (
+          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 className="text-lg font-semibold mb-3">Projected Reward Distributions</h2>
+            <p className="text-sm text-gray-500 mb-3">Based on current contributions. Final distribution will occur when the project ends.</p>
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full table-auto">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contributor</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Projected Amount (WLD)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {potentialDistributions.map((dist, index) => (
+                    <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        {dist.username || `${dist.address.substring(0, 6)}...${dist.address.substring(dist.address.length - 4)}`}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                        {dist.amount}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50">
+                  <tr>
+                    <td className="px-4 py-2 text-sm font-medium">Total</td>
+                    <td className="px-4 py-2 text-sm font-medium text-right">
+                      {potentialDistributions.reduce((sum, d) => sum + d.amount, 0).toFixed(6)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
+        
         {/* Display reward distributions for completed projects */}
         {projectData && projectData.status === 'completed' && distributions.length > 0 && (
           <div className="bg-white p-6 rounded-lg shadow-md mb-6">
@@ -339,7 +543,7 @@ export default function ProjectDataPage() {
                   {distributions.map((dist, index) => (
                     <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                       <td className="px-4 py-3 text-sm text-gray-900">
-                        {dist.address.substring(0, 6)}...{dist.address.substring(dist.address.length - 4)}
+                        {dist.username || `${dist.address.substring(0, 6)}...${dist.address.substring(dist.address.length - 4)}`}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900 text-right">
                         {dist.amount}
