@@ -19,13 +19,8 @@ const MapView = dynamic(() => import("@/components/Map").then((mod) => mod.MapVi
 
 export default function Home() {
   return (
-    <main className="flex flex-col items-center px-4 py-2 md:px-6 min-h-screen">
-      <div className="w-full max-w-5xl mb-8">
-        {/* <h1 className="text-2xl md:text-3xl font-bold mb-2">MapMint Noise Mapping</h1>
-        <p className="text-gray-600 mb-6">
-          Help collect noise data in your city. Find pins on the map that need noise measurements.
-        </p> */}
-        
+    <main className="flex flex-col items-center min-h-screen w-full">
+      <div className="w-full h-screen">
         {/* Map View */}
         <MapView />
       </div>

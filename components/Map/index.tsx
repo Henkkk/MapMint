@@ -545,7 +545,7 @@ export const MapView = () => {
   }, [showDistributionModal, distributionData, distributionProject]);
 
   return (
-    <div className="h-[calc(100vh-4rem)] w-full relative overflow-hidden">
+    <div className="h-screen w-full relative overflow-hidden">
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center z-10 bg-white bg-opacity-80">
           <div className="flex flex-col items-center">
@@ -637,7 +637,7 @@ export const MapView = () => {
       )}
       
       {/* Google Map */}
-      <div className="w-full h-full relative" ref={mapRef}>
+      <div className="absolute inset-0" ref={mapRef}>
         {!isLoading && isLoaded ? (
           <>
             <GoogleMap
