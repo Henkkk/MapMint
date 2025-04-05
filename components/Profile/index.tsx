@@ -44,8 +44,151 @@ export const ProfileView = () => {
   const [contributionHistory, setContributionHistory] = useState<ContributionItem[]>([]);
   const [createdTasks, setCreatedTasks] = useState<ContributionItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userAddress, setUserAddress] = useState('');
 
-  // Fetch user data
+  // Function to fetch created projects
+  const fetchCreatedProjects = async () => {
+    if (!userAddress) return;
+    
+    try {
+      const allProjectCIDs = JSON.parse(localStorage.getItem('projectCIDs') || '[]') as string[];
+      const userProjects: ContributionItem[] = [];
+      
+      for (const cid of allProjectCIDs) {
+        try {
+          const projectDataStr = localStorage.getItem(`project-${cid}`);
+          if (projectDataStr) {
+            const projectData = JSON.parse(projectDataStr) as ProjectData;
+            
+            // Check if the user is the creator
+            if (projectData.createdBy === userAddress) {
+              userProjects.push({
+                id: cid,
+                name: projectData.title,
+                date: new Date(projectData.createdAt).toLocaleDateString(),
+                amount: `${projectData.rewards.worldcoin} $WORLD`,
+                status: projectData.status === 'active' ? 'Active' : 
+                        projectData.status === 'completed' ? 'Completed' : 'Expired'
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Error loading project data:", error);
+        }
+      }
+      
+      setCreatedTasks(userProjects);
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching created projects:", error);
+      setLoading(false);
+    }
+  };
+
+  // Function to fetch contribution history
+  const fetchContributionHistory = async () => {
+    if (!userAddress) return;
+    
+    try {
+      // Fetch contribution history
+      const submissions = JSON.parse(localStorage.getItem('submissions') || '[]') as Submission[];
+      const userSubmissions = submissions.filter(s => s.userAddress === userAddress);
+      
+      // Get project details for each submission
+      const contributionProjects: ContributionItem[] = [];
+      let totalEarned = 0;
+      let currentBalance = 0;
+      
+      for (const submission of userSubmissions) {
+        try {
+          // Get project data
+          const projectDataStr = localStorage.getItem(`project-${submission.projectCID}`);
+          if (projectDataStr) {
+            const projectData = JSON.parse(projectDataStr) as ProjectData;
+            
+            // Check if there are distributions for this project
+            const distributionsStr = localStorage.getItem(`project-${submission.projectCID}-distributions`);
+            let status = 'Pending';
+            let amount = '0 $WORLD';
+            
+            if (distributionsStr) {
+              const distributions = JSON.parse(distributionsStr) as Distribution[];
+              const userDistribution = distributions.find(d => d.address === userAddress);
+              
+              if (userDistribution) {
+                status = 'Paid';
+                amount = `${userDistribution.amount} $WORLD`;
+                totalEarned += userDistribution.amount;
+                currentBalance += userDistribution.amount;
+              }
+            } else if (projectData.status === 'active') {
+              status = 'Pending';
+              // Estimate amount based on project rewards and contribution count
+              const estimatedAmount = Math.floor(projectData.rewards.worldcoin / 5); // Simple estimate
+              amount = `~${estimatedAmount} $WORLD`;
+            }
+            
+            contributionProjects.push({
+              id: submission.projectCID,
+              name: projectData.title,
+              date: new Date(submission.timestamp).toLocaleDateString(),
+              amount: amount,
+              status: status
+            });
+          }
+        } catch (error) {
+          console.error("Error loading project data for submission:", error);
+        }
+      }
+      
+      setContributionHistory(contributionProjects);
+      setTotalEarned(totalEarned);
+      setBalance(currentBalance);
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching contribution history:", error);
+      setLoading(false);
+    }
+  };
+
+  // Listen for new project creation events
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'projectCIDs') {
+        // Project list was updated, refresh the created projects
+        fetchCreatedProjects();
+      } else if (e.key && e.key.startsWith('project-') && !e.key.includes('-distributions')) {
+        // A project was created or updated, refresh the created projects
+        fetchCreatedProjects();
+      } else if (e.key === 'submissions') {
+        // Submissions were updated, refresh the contribution history
+        fetchContributionHistory();
+      }
+    };
+
+    // Listen for storage events (when another tab updates localStorage)
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Create custom event handlers for same-tab updates
+    const handleProjectCreated = () => {
+      fetchCreatedProjects();
+    };
+    
+    const handleSubmissionCreated = () => {
+      fetchContributionHistory();
+    };
+    
+    window.addEventListener('projectCreated', handleProjectCreated);
+    window.addEventListener('submissionCreated', handleSubmissionCreated);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('projectCreated', handleProjectCreated);
+      window.removeEventListener('submissionCreated', handleSubmissionCreated);
+    };
+  }, [userAddress]);
+
+  // Fetch user data on component mount
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -53,97 +196,18 @@ export const ProfileView = () => {
         // Get user's World ID address from cookie
         const cookies = document.cookie.split(';');
         const addressCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-address='));
-        const userAddress = addressCookie ? decodeURIComponent(addressCookie.split('=')[1]) : '';
+        const address = addressCookie ? decodeURIComponent(addressCookie.split('=')[1]) : '';
         
-        if (!userAddress) {
+        setUserAddress(address);
+        
+        if (!address) {
           setLoading(false);
           return;
         }
         
-        // Fetch contribution history
-        const submissions = JSON.parse(localStorage.getItem('submissions') || '[]') as Submission[];
-        const userSubmissions = submissions.filter(s => s.userAddress === userAddress);
-        
-        // Get project details for each submission
-        const contributionProjects: ContributionItem[] = [];
-        let totalEarned = 0;
-        let currentBalance = 0;
-        
-        for (const submission of userSubmissions) {
-          try {
-            // Get project data
-            const projectDataStr = localStorage.getItem(`project-${submission.projectCID}`);
-            if (projectDataStr) {
-              const projectData = JSON.parse(projectDataStr) as ProjectData;
-              
-              // Check if there are distributions for this project
-              const distributionsStr = localStorage.getItem(`project-${submission.projectCID}-distributions`);
-              let status = 'Pending';
-              let amount = '0 $WORLD';
-              
-              if (distributionsStr) {
-                const distributions = JSON.parse(distributionsStr) as Distribution[];
-                const userDistribution = distributions.find(d => d.address === userAddress);
-                
-                if (userDistribution) {
-                  status = 'Paid';
-                  amount = `${userDistribution.amount} $WORLD`;
-                  totalEarned += userDistribution.amount;
-                  currentBalance += userDistribution.amount;
-                }
-              } else if (projectData.status === 'active') {
-                status = 'Pending';
-                // Estimate amount based on project rewards and contribution count
-                const estimatedAmount = Math.floor(projectData.rewards.worldcoin / 5); // Simple estimate
-                amount = `~${estimatedAmount} $WORLD`;
-              }
-              
-              contributionProjects.push({
-                id: submission.projectCID,
-                name: projectData.title,
-                date: new Date(submission.timestamp).toLocaleDateString(),
-                amount: amount,
-                status: status
-              });
-            }
-          } catch (error) {
-            console.error("Error loading project data for submission:", error);
-          }
-        }
-        
-        setContributionHistory(contributionProjects);
-        setTotalEarned(totalEarned);
-        setBalance(currentBalance);
-        
-        // Fetch created projects
-        const allProjectCIDs = JSON.parse(localStorage.getItem('projectCIDs') || '[]') as string[];
-        const userProjects: ContributionItem[] = [];
-        
-        for (const cid of allProjectCIDs) {
-          try {
-            const projectDataStr = localStorage.getItem(`project-${cid}`);
-            if (projectDataStr) {
-              const projectData = JSON.parse(projectDataStr) as ProjectData;
-              
-              // Check if the user is the creator
-              if (projectData.createdBy === userAddress) {
-                userProjects.push({
-                  id: cid,
-                  name: projectData.title,
-                  date: new Date(projectData.createdAt).toLocaleDateString(),
-                  amount: `${projectData.rewards.worldcoin} $WORLD`,
-                  status: projectData.status === 'active' ? 'Active' : 
-                          projectData.status === 'completed' ? 'Completed' : 'Expired'
-                });
-              }
-            }
-          } catch (error) {
-            console.error("Error loading project data:", error);
-          }
-        }
-        
-        setCreatedTasks(userProjects);
-        setLoading(false);
+        // Fetch contribution history and projects
+        await fetchContributionHistory();
+        await fetchCreatedProjects();
       } catch (error) {
         console.error("Error fetching user data:", error);
         setLoading(false);

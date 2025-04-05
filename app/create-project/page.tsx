@@ -540,9 +540,12 @@ export default function CreateProjectPage() {
         if (imagePreview) {
           localStorage.setItem(`project-image-${cid}`, imagePreview);
         }
+
+        // Dispatch event to notify Profile component about the new project
+        window.dispatchEvent(new Event('projectCreated'));
       } catch (storageError) {
         console.warn("Could not store full project in localStorage:", storageError);
-        // Try with even less data if necessary
+        // Try with less data if necessary
         try {
           const minimalProjectData = {
             title: projectData.title,
@@ -552,6 +555,9 @@ export default function CreateProjectPage() {
             cid: cid
           };
           localStorage.setItem(`project-${cid}`, JSON.stringify(minimalProjectData));
+          
+          // Dispatch event to notify Profile component about the new project
+          window.dispatchEvent(new Event('projectCreated'));
         } catch (fallbackError) {
           console.error("Failed to store even minimal project data:", fallbackError);
           // Continue without storing in localStorage

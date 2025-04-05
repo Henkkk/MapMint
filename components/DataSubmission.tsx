@@ -59,6 +59,9 @@ export default function DataSubmission({
       });
       localStorage.setItem('submissions', JSON.stringify(submissions));
 
+      // Dispatch event to notify Profile component about the new submission
+      window.dispatchEvent(new Event('submissionCreated'));
+
       setSuccess(true);
       
       // Reset after success
