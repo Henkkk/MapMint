@@ -5,6 +5,7 @@ import { useEffect, useState, useRef } from 'react';
 import Image from 'next/image';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { IPFSProjectData, uploadProjectToIPFS } from '../../lib/ipfs-service';
+import { MiniKit, tokenToDecimals, Tokens, PayCommandInput, ResponseEvent } from '@worldcoin/minikit-js';
 
 // Add custom CSS to ensure the Places Autocomplete dropdown is visible
 const placesAutocompleteStyles = `
@@ -128,6 +129,7 @@ export default function CreateProjectPage() {
     }
   });
   const [submitting, setSubmitting] = useState(false);
+  const [miniKitAvailable, setMiniKitAvailable] = useState(false);
   
   // Load Google Maps API
   const { isLoaded, loadError } = useJsApiLoader({
@@ -325,6 +327,21 @@ export default function CreateProjectPage() {
     }
   }, [router]);
   
+  // Check if MiniKit is available
+  useEffect(() => {
+    const checkMiniKit = () => {
+      const isAvailable = typeof MiniKit !== 'undefined' && MiniKit.isInstalled();
+      console.log("MiniKit available:", isAvailable);
+      setMiniKitAvailable(isAvailable);
+    };
+    
+    checkMiniKit();
+    
+    // Check again after a short delay to ensure it's fully loaded
+    const timer = setTimeout(checkMiniKit, 1000);
+    return () => clearTimeout(timer);
+  }, []);
+  
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     
@@ -415,6 +432,67 @@ export default function CreateProjectPage() {
     }
   };
   
+  const initiatePayment = async (cid: string, title: string, userAddress: string) => {
+    console.log("Attempting to initiate payment...");
+    
+    if (!miniKitAvailable) {
+      console.error("MiniKit is not available. Are you running inside World App?");
+      alert("Payment feature requires World App. This is just a simulation for the hackathon.");
+      return;
+    }
+    
+    try {
+      // Generate a reference ID for the payment - must be 36 characters or less
+      // Create a shorter reference by using first 8 chars of CID + timestamp
+      const shortCid = cid.substring(0, 8);
+      const timestamp = Date.now().toString().slice(-8);
+      const paymentReference = `p-${shortCid}-${timestamp}`;
+      
+      console.log("Payment reference (must be ≤36 chars):", paymentReference, `(${paymentReference.length} chars)`);
+      
+      console.log("Creating payment payload...");
+      // Create payment payload with 0.1 WLD for the project
+      const paymentPayload: PayCommandInput = {
+        reference: paymentReference,
+        to: userAddress || "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", // Use a default address if none available
+        tokens: [
+          {
+            symbol: Tokens.WLD,
+            token_amount: tokenToDecimals(0.1, Tokens.WLD).toString(), // Charging 0.1 WLD for the project
+          }
+        ],
+        description: `Creating project: ${title || "New Project"}`
+      };
+      
+      console.log("Payment payload:", paymentPayload);
+      
+      // Send payment command to World App using async approach
+      console.log("Calling MiniKit.commandsAsync.pay()...");
+      const { finalPayload } = await MiniKit.commandsAsync.pay(paymentPayload);
+      
+      console.log("Payment response:", finalPayload);
+      
+      if (finalPayload.status === 'success') {
+        console.log("Payment successful!");
+        // In a real app, you would verify the payment with your backend
+        // const res = await fetch(`/api/confirm-payment`, {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify(finalPayload),
+        // });
+        // const payment = await res.json();
+        // if (payment.success) {
+        //   console.log("Payment verified with backend");
+        // }
+      } else {
+        console.log("Payment not successful:", finalPayload.status);
+      }
+    } catch (paymentError) {
+      console.error("Error initiating payment:", paymentError);
+      alert("Error processing payment. This is just a simulation for the hackathon.");
+    }
+  };
+  
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSubmitting(true);
@@ -482,10 +560,18 @@ export default function CreateProjectPage() {
         }
       }
       
-      alert("Project created successfully!");
-      
-      // Navigate back to map
-      router.push('/');
+      // Process the payment after successful project creation
+      try {
+        await initiatePayment(cid, projectData.title, userAddress);
+        alert("Project created successfully!");
+        
+        // Navigate back to map
+        router.push('/');
+      } catch (paymentError) {
+        console.error("Payment error:", paymentError);
+        alert("Project created, but payment process failed. You can continue using the app.");
+        router.push('/');
+      }
     } catch (error) {
       console.error("Error creating project:", error);
       alert("Failed to create project. Please try again.");
@@ -497,6 +583,24 @@ export default function CreateProjectPage() {
   const goBack = () => {
     router.back();
   };
+
+  // Add effect for setting up MiniKit event listeners
+  useEffect(() => {
+    // Set up MiniKit payment response listener
+    if (miniKitAvailable) {
+      console.log("Setting up MiniKit payment listener");
+      MiniKit.subscribe(ResponseEvent.MiniAppPayment, (response) => {
+        console.log("Payment response received:", response);
+      });
+    }
+    
+    // Clean up on unmount
+    return () => {
+      if (miniKitAvailable) {
+        MiniKit.unsubscribe(ResponseEvent.MiniAppPayment);
+      }
+    };
+  }, [miniKitAvailable]);
 
   if (loading) {
     return (
@@ -540,15 +644,16 @@ export default function CreateProjectPage() {
         </div>
         
         <div className="bg-white p-6 rounded-lg shadow-md">
-          {/* <div className="mb-4 flex items-center">
-              <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs flex items-center mr-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Verified with World ID
-              </div>
-              <span className="text-xs text-gray-500">Required for project creation</span>
-           </div> */}
+          {/* {miniKitAvailable && (
+            <div className="mb-4 bg-green-50 p-3 rounded-md border border-green-200">
+              <p className="text-green-700 text-sm">✓ World App Payment integration available</p>
+            </div>
+          )}
+          {!miniKitAvailable && (
+            <div className="mb-4 bg-yellow-50 p-3 rounded-md border border-yellow-200">
+              <p className="text-yellow-700 text-sm">⚠️ World App Payment integration not detected. For the best experience, please open this app in World App.</p>
+            </div>
+          )} */}
           
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
