@@ -7,10 +7,12 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "node": "hardhat node",
-    "deploy:local": "hardhat run --network localhost scripts/deploy/deploy.js",
-    "deploy:sepolia": "hardhat run --network sepolia scripts/deploy/deploy.js",
-    "deploy:mumbai": "hardhat run --network mumbai scripts/deploy/deploy.js",
-    "interact": "hardhat run scripts/interact.js"
+    "deploy:local": "hardhat run --network localhost ../scripts/deploy/deploy.js",
+    "deploy:worldchain": "hardhat run --network worldchain ../scripts/deploy/deploy.js",
+    "deploy:sepolia": "hardhat run --network sepolia ../scripts/deploy/deploy.js",
+    "deploy:mumbai": "hardhat run --network mumbai ../scripts/deploy/deploy.js",
+    "interact": "hardhat run ../scripts/interact.js",
+    "interact:worldchain": "hardhat run --network worldchain ../scripts/interact.js"
   },
   "keywords": [
     "ethereum",
@@ -40,4 +42,4 @@
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.0"
   }
-}
+} 
