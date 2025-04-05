@@ -14,7 +14,11 @@ export const MapView = () => {
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [locationAddress, setLocationAddress] = useState<string>('');
+  const [drawerTranslateY, setDrawerTranslateY] = useState(0);
+  const [activeTab, setActiveTab] = useState('map');
   const mapRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const touchStartRef = useRef(0);
   const router = useRouter();
   
   // Load Google Maps API
@@ -82,7 +86,25 @@ export const MapView = () => {
   
   // Start measuring at selected pin location
   const startMeasuring = (pin: MapPin) => {
-    router.push('/noise-measurement');
+    try {
+      // Check if user is verified with World ID
+      const cookies = document.cookie.split(';');
+      const verifiedCookie = cookies.find(cookie => cookie.trim().startsWith('world-id-verified='));
+      const isVerified = verifiedCookie?.includes('true') || false;
+      
+      if (!isVerified) {
+        // Show verification prompt with more detail
+        alert("You must verify with World ID before contributing data. You will now be redirected to the verification page.");
+        router.push('/verify');
+        return;
+      }
+      
+      // If verified, proceed to noise measurement
+      router.push('/noise-measurement');
+    } catch (error) {
+      console.error("Error in startMeasuring:", error);
+      alert("An error occurred. Please try again.");
+    }
   };
 
   // Map load callback
@@ -111,10 +133,72 @@ export const MapView = () => {
   // Close drawer
   const closeDrawer = () => {
     setDrawerOpen(false);
+    // Reset drawer position
+    setDrawerTranslateY(0);
   };
-  
+
+  // Handle touch start on drawer
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartRef.current = e.touches[0].clientY;
+  }, []);
+
+  // Handle touch move on drawer
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const touchY = e.touches[0].clientY;
+    const deltaY = touchY - touchStartRef.current;
+    
+    // Only allow downward swipes
+    if (deltaY > 0) {
+      setDrawerTranslateY(deltaY);
+    }
+  }, []);
+
+  // Handle touch end on drawer
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    // If dragged more than 100px down or flicked quickly, close the drawer
+    if (drawerTranslateY > 100 || e.changedTouches[0].clientY - touchStartRef.current > 50) {
+      closeDrawer();
+    } else {
+      // Otherwise snap back
+      setDrawerTranslateY(0);
+    }
+  }, [drawerTranslateY]);
+
+  // Handle mouse events for desktop (similar to touch events)
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    touchStartRef.current = e.clientY;
+    
+    // Add mouse move and up listeners to document
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaY = e.clientY - touchStartRef.current;
+      if (deltaY > 0) {
+        setDrawerTranslateY(deltaY);
+      }
+    };
+    
+    const handleMouseUp = (e: MouseEvent) => {
+      if (drawerTranslateY > 100 || e.clientY - touchStartRef.current > 50) {
+        closeDrawer();
+      } else {
+        setDrawerTranslateY(0);
+      }
+      
+      // Remove listeners
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [drawerTranslateY, closeDrawer]);
+
+  // Handle navigation to profile
+  const navigateToProfile = () => {
+    router.push('/profile');
+  };
+
   return (
-    <div className="h-[85vh] w-full relative overflow-hidden">
+    <div className="h-[calc(100vh-4rem)] w-full relative overflow-hidden">
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center z-10 bg-white bg-opacity-80">
           <div className="flex flex-col items-center">
@@ -179,7 +263,7 @@ export const MapView = () => {
             </GoogleMap>
             
             {/* User location display */}
-            {userLocation && (
+            {/* {userLocation && (
               <div className="absolute top-3 right-3 bg-white p-3 rounded-lg shadow-lg z-10 max-w-[300px]">
                 <div className="flex items-center gap-2 mb-1">
                   <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
@@ -196,7 +280,7 @@ export const MapView = () => {
                   </div>
                 )}
               </div>
-            )}
+            )} */}
           </>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
@@ -250,7 +334,12 @@ export const MapView = () => {
                     }}
                     className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
                   >
-                    Start Measuring
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Contribute Data</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    </div>
                   </button>
                 </div>
               ))}
@@ -264,6 +353,12 @@ export const MapView = () => {
         className={`fixed inset-x-0 bottom-0 z-40 transform transition-transform duration-300 ${
           drawerOpen ? 'translate-y-0' : 'translate-y-full'
         }`}
+        style={{ 
+          transform: drawerOpen 
+            ? `translateY(${drawerTranslateY}px)` 
+            : 'translateY(100%)',
+          transition: drawerTranslateY > 0 ? 'none' : 'transform 0.3s ease-out'
+        }}
       >
         {/* Backdrop */}
         <div 
@@ -274,9 +369,18 @@ export const MapView = () => {
         />
         
         {/* Drawer content */}
-        <div className="relative bg-white rounded-t-xl shadow-lg z-40 max-h-[80vh] overflow-y-auto">
-          {/* Drawer handle */}
-          <div className="flex justify-center p-2">
+        <div 
+          ref={drawerRef}
+          className="relative bg-white rounded-t-xl shadow-lg z-40 max-h-[80vh] overflow-y-auto"
+        >
+          {/* Drawer handle - touch/click area for swipe */}
+          <div 
+            className="flex justify-center p-2 cursor-grab"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onMouseDown={handleMouseDown}
+          >
             <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
           </div>
           
@@ -340,21 +444,68 @@ export const MapView = () => {
               
               <button 
                 onClick={() => startMeasuring(selectedPin)}
-                className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium"
+                className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium mb-14"
               >
-                Start Measuring
-              </button>
-              
-              <button 
-                onClick={closeDrawer}
-                className="w-full px-4 py-3 mt-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
-              >
-                Close
+                <div className="flex items-center justify-center gap-2">
+                  <span>Contribute Data</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
               </button>
             </div>
           )}
         </div>
       </div>
+
+      {/* Bottom Navigation Bar */}
+      {!drawerOpen && (
+        <div className="fixed inset-x-0 bottom-0 bg-white border-t border-gray-200 z-30">
+          <div className="flex justify-around items-center h-24">
+            <button 
+              onClick={() => setActiveTab('map')}
+              className="flex flex-col items-center justify-center w-full h-full text-blue-500"
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                className="h-6 w-6" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6-3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" 
+                />
+              </svg>
+              <span className="text-xs mt-1 font-medium">Map</span>
+            </button>
+            
+            <button 
+              onClick={navigateToProfile}
+              className="flex flex-col items-center justify-center w-full h-full text-gray-500"
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                className="h-6 w-6" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" 
+                />
+              </svg>
+              <span className="text-xs mt-1 font-medium">Profile</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }; 

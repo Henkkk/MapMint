@@ -506,7 +506,7 @@ Accuracy: ${measurement.location.accuracy.toFixed(1)} meters
                 : "bg-gray-300 text-gray-500 cursor-not-allowed"
             }`}
           >
-            Start Measuring
+            Contribute Data
           </button>
         ) : (
           <div className="flex flex-col gap-3">
