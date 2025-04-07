@@ -1,3 +1,4 @@
+![cover](https://github.com/user-attachments/assets/19da4ec4-0936-4167-a27b-6b9155e14b90)
 # MapMint
 
 For users, MapMint provides a new way to earn just by being in the right place at the right time. For businesses, researchers, and DAOs, it's a powerful tool to crowdsource hyper-local, real-time data at scale—faster and cheaper than traditional methods. Over time, this data can be aggregated and sold via an open marketplace, creating new economic opportunities for both creators and contributors while supporting a transparent, user-owned data ecosystem.
